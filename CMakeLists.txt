@@ -3,4 +3,4 @@ project(libcfg C)
 
 set(CMAKE_C_STANDARD 23)
 
-add_library(libcfg src/cfg.c)
+add_library(libcfg src/json.c)
