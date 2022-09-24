@@ -67,6 +67,32 @@ if (json == NULL) {
 }
 ```
 
+### Getting settings at runtime
+
+Any function that gets a setting will return the desired type, and will need an `obj_t` parameter and the setting identifier of form `objX.objY.setting` as second parameter. Example:
+
+```json
+{
+  "objX": {
+    "objY": {
+      "setting": "hello"
+    }
+  }
+}
+```
+
+#### Getting a string setting
+
+To get a string at runtime use `json_get_string()`. The function will return NULL if no corresponding setting was found.
+
+```c
+char* str = json_get_string(json, "string");
+
+if (str == NULL) {
+    printf("error: setting \"string\" doesn't exist\n");
+}
+```
+
 ### Saving object to file
 
 You can save any JSON object to the desired file.
@@ -93,6 +119,14 @@ int main() {
     obj_t* json = json_from_file("./object.json");
     if (json == NULL) {
         printf("error: invalid configuration\n");
+        return 1;
+    }
+    
+    /* Get string setting in the root object from it's name */
+    char* str = json_get_string(json, "string");
+    if (str == NULL) {
+        printf("error: setting \"string\" doesn't exist\n");
+        json_free(json);
         return 1;
     }
     

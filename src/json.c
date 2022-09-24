@@ -175,7 +175,7 @@ char* json_align(const char* str) {
  * @param str Serialized JSON string
  * @return Array of json settings
  */
-char **json_get_string_settings(const char *str) {
+char** json_get_string_settings(const char *str) {
     char* aligned = json_align(str);
     char* isolated = json_isolate_content(aligned);
     size_t isolated_len = strlen(isolated);
@@ -529,4 +529,93 @@ int json_save(obj_t* json, const char* path) {
     free(str);
     free(formatted);
     return 0;
+}
+
+/**
+ * Gets length of key array from string
+ * @param str Key array (ex: "object1.object2.setting")
+ * @return The number of keys in the string (ex: 3)
+ */
+size_t json_get_key_array_len(const char* str) {
+    size_t count = 0;
+
+    for (int i = 0; str[i] != '\0'; i++) {
+        if (str[i] == '.') { count++; }
+    }
+    return count + 1;
+}
+
+/**
+ * Splits a string representing array of strings like
+ * @param str Key array (ex: "object1.object2.setting")
+ * @return A NULL-terminated array of key strings
+ */
+char** json_get_key_array(const char* str) {
+    size_t len = strlen(str);
+
+    if (strstr(str, "..") != NULL || str[0] == '.' || str[len - 1] == '.') {
+        return NULL;
+    }
+
+    size_t arr_len = json_get_key_array_len(str);
+    char** str_array = malloc(sizeof(char*) * (arr_len + 1));
+    str_array[arr_len] = NULL;
+
+    for (int i = 0, j = 0, k = 0; str[i] != '\0'; i++) {
+        if (str[i] == '.' || i == len - 1) {
+            int offset = (i == len - 1) ? 2 : 1;
+
+            str_array[j] = malloc(i - k + offset);
+            str_array[j][i - k + offset - 1] = '\0';
+            strncpy(str_array[j], &str[k], i - k + offset - 1);
+            k = i + 1;
+            j++;
+            continue;
+        }
+    }
+
+    return str_array;
+}
+
+/**
+ * Get first corresponding string setting
+ * @param obj Object to search
+ * @param key_array Key array
+ * @return Corresponding setting or NULL if not found
+ */
+char* json_get_string_key_array(obj_t* obj, char** key_array) {
+    for (size_t j = 0; obj->settings[j] != NULL; j++) {
+        if (strcmp(key_array[0], obj->settings[j]->name) == 0) {
+            switch (obj->settings[j]->type) {
+                case String: { return obj->settings[j]->string_type; }
+                case Object: { return json_get_string_key_array(obj->settings[j]->obj_type, &key_array[1]); }
+                default: { return NULL; }
+            }
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * Get corresponding string setting
+ * @param obj Object to search
+ * @param str Key array like (ex: "object.setting")
+ * @return Corresponding setting or NULL if error happens
+ */
+char* json_get_string(obj_t* obj, const char* str) {
+    char** key_array = json_get_key_array(str);
+
+    if (key_array == NULL) {
+        return NULL;
+    }
+
+    char* value = json_get_string_key_array(obj, key_array);
+
+    for (size_t i = 0; key_array[i] != NULL; i++) {
+        free(key_array[i]);
+    }
+    free(key_array);
+
+    return value;
 }

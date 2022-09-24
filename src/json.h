@@ -36,7 +36,8 @@ struct setting_s {
 
 obj_t* json_from_file(const char *path);
 obj_t* json_from_string(const char* str);
+char* json_get_string(obj_t* obj, const char* str);
 void json_free(obj_t* obj);
-int json_save(obj_t* json, const char* path);
+int json_save(obj_t* obj, const char* path);
 
 #endif //LIBCFG_CFG_H
