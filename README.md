@@ -32,6 +32,7 @@ Types to be added are:
 - Adding/changing value at runtime
 - Add flags for file opening to chose if the user wants to create it automatically
 - List type
+- Dot support in setting names
 
 ## Documentation
 
