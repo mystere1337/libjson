@@ -584,7 +584,11 @@ char** json_get_key_array(const char* str) {
  * @return Corresponding setting or NULL if not found
  */
 char* json_get_string_key_array(obj_t* obj, char** key_array) {
-    for (size_t j = 0; obj->settings[j] != NULL; j++) {
+    if (obj == NULL) {
+        return NULL;
+    }
+
+    for (size_t j = 0; j < obj->settings_count; j++) {
         if (strcmp(key_array[0], obj->settings[j]->name) == 0) {
             switch (obj->settings[j]->type) {
                 case String: { return obj->settings[j]->string_type; }
