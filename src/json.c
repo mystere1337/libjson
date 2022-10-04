@@ -548,12 +548,17 @@ size_t json_get_key_array_len(const char* str) {
 /**
  * Splits a string representing array of strings like
  * @param str Key array (ex: "object1.object2.setting")
+ * @param separator Separator to split keys in the string
  * @return A NULL-terminated array of key strings
  */
-char** json_get_key_array(const char* str) {
+char** json_get_key_array(const char* str, const char separator) {
     size_t len = strlen(str);
+    char* double_sep = malloc(3);
+    double_sep[0] = separator;
+    double_sep[1] = separator;
+    double_sep[2] = '\0';
 
-    if (strstr(str, "..") != NULL || str[0] == '.' || str[len - 1] == '.') {
+    if (strstr(str, double_sep) != NULL || str[0] == separator || str[len - 1] == separator) {
         return NULL;
     }
 
@@ -562,7 +567,7 @@ char** json_get_key_array(const char* str) {
     str_array[arr_len] = NULL;
 
     for (int i = 0, j = 0, k = 0; str[i] != '\0'; i++) {
-        if (str[i] == '.' || i == len - 1) {
+        if (str[i] == separator || i == len - 1) {
             int offset = (i == len - 1) ? 2 : 1;
 
             str_array[j] = malloc(i - k + offset);
@@ -583,17 +588,23 @@ char** json_get_key_array(const char* str) {
  * @param key_array Key array
  * @return Corresponding setting or NULL if not found
  */
-char* json_get_string_key_array(obj_t* obj, char** key_array) {
+setting_t* json_get_setting(obj_t* obj, char** key) {
     if (obj == NULL) {
         return NULL;
     }
 
-    for (size_t j = 0; j < obj->settings_count; j++) {
-        if (strcmp(key_array[0], obj->settings[j]->name) == 0) {
-            switch (obj->settings[j]->type) {
-                case String: { return obj->settings[j]->string_type; }
-                case Object: { return json_get_string_key_array(obj->settings[j]->obj_type, &key_array[1]); }
-                default: { return NULL; }
+    size_t key_count = 0;
+
+    for (size_t i = 0; key[i] != NULL; i++) {
+        key_count++;
+    }
+
+    for (size_t i = 0; i < obj->settings_count; i++) {
+        if (strcmp(obj->settings[i]->name, key[0]) == 0) {
+            if (obj->settings[i]->type == Object && key_count - 1 != 0) {
+                return json_get_setting(obj->settings[i]->obj_type, &key[1]);
+            } else {
+                return obj->settings[i];
             }
         }
     }
@@ -605,21 +616,93 @@ char* json_get_string_key_array(obj_t* obj, char** key_array) {
  * Get corresponding string setting
  * @param obj Object to search
  * @param str Key array like (ex: "object.setting")
+ * @param separator Char separator separating the keys in the string
  * @return Corresponding setting or NULL if error happens
  */
-char* json_get_string(obj_t* obj, const char* str) {
-    char** key_array = json_get_key_array(str);
+char* json_get_string(obj_t* obj, const char* str, char separator) {
+    char** key_array = json_get_key_array(str, separator);
+    setting_t* setting = json_get_setting(obj, key_array);
 
-    if (key_array == NULL) {
+    if (setting == NULL || setting->type != String) {
+        printf("error: can't find %s, or it isn't a string\n", str);
         return NULL;
     }
 
-    char* value = json_get_string_key_array(obj, key_array);
+    return setting->string_type;
+}
 
-    for (size_t i = 0; key_array[i] != NULL; i++) {
-        free(key_array[i]);
+/**
+ * Get corresponding boolean setting
+ * @param obj Object to search
+ * @param str Key array like (ex: "object.setting")
+ * @param separator Char separator separating the keys in the string (ex: '.')
+ * @return Correct boolean value or 0 if nothing is found
+ */
+int json_get_bool(obj_t* obj, const char* str, char separator) {
+    char** key_array = json_get_key_array(str, separator);
+    setting_t* setting = json_get_setting(obj, key_array);
+
+    if (setting == NULL || setting->type != Boolean) {
+        printf("error: can't find %s, or it isn't a bool\n", str);
+        return 0;
     }
-    free(key_array);
 
-    return value;
+    return setting->bool_type;
+}
+
+/**
+ * Get corresponding integer setting
+ * @param obj Object to search
+ * @param str Key array like (ex: "object.setting")
+ * @param separator Char separator separating the keys in the string (ex: '.')
+ * @return Corresponding setting or 0 if error happens
+ */
+long long json_get_integer(obj_t* obj, const char* str, char separator) {
+    char** key_array = json_get_key_array(str, separator);
+    setting_t* setting = json_get_setting(obj, key_array);
+
+    if (setting == NULL || setting->type != Integer) {
+        printf("error: can't find %s, or it isn't an integer\n", str);
+        return 0;
+    }
+
+    return setting->long_type;
+}
+
+/**
+ * Get corresponding object setting
+ * @param obj Object to search
+ * @param str Key array like (ex: "object.setting")
+ * @param separator Char separator separating the keys in the string (ex: '.')
+ * @return Corresponding setting or NULL if error happens
+ */
+obj_t* json_get_object(obj_t* obj, const char* str, char separator) {
+    char** key_array = json_get_key_array(str, separator);
+    setting_t* setting = json_get_setting(obj, key_array);
+
+    if (setting == NULL || setting->type != Object) {
+        printf("error: can't find %s, or it isn't an object\n", str);
+        return NULL;
+    }
+
+    return setting->obj_type;
+}
+
+/**
+ * Get corresponding floating point number setting
+ * @param obj Object to search
+ * @param str Key array like (ex: "object.setting")
+ * @param separator Char separator separating the keys in the string (ex: '.')
+ * @return Corresponding value or 0 if error happens
+ */
+long double json_get_floating(obj_t* obj, const char* str, char separator) {
+    char** key_array = json_get_key_array(str, separator);
+    setting_t* setting = json_get_setting(obj, key_array);
+
+    if (setting == NULL || setting->type != Floating) {
+        printf("error: can't find %s, or it isn't a floating point number\n", str);
+        return 0;
+    }
+
+    return setting->double_type;
 }
