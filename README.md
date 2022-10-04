@@ -76,18 +76,21 @@ Any function that gets a setting will return the desired type, and will need an 
 {
   "objX": {
     "objY": {
-      "setting": "hello"
+      "setting": "hello",
+      "setting.2": 69
     }
   }
 }
 ```
+
+Note: It is possible to get settings from keys that are containing dots, for this you need to specify the separator as the third parameter, `objX|objY|setting.2` with `|` separator will return `69` as the result, following the example above.
 
 #### Getting a string setting
 
 To get a string at runtime use `json_get_string()`. The function will return NULL if no corresponding setting was found.
 
 ```c
-char* str = json_get_string(json, "string");
+char* str = json_get_string(json, "string", '.');
 
 if (str == NULL) {
     printf("error: setting \"string\" doesn't exist\n");
