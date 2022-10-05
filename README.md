@@ -12,6 +12,8 @@ A simple JSON parser and configuration manager.
 - Object storing
 - Object freeing
 - Object saving to file
+- Getting setting value at runtime
+- Dot support in setting names
 
 ### Supported types
 
@@ -28,11 +30,10 @@ Types to be added are:
 
 ### Planned features
 
-- Getting value at runtime
 - Adding/changing value at runtime
 - Add flags for file opening to chose if the user wants to create it automatically
 - List type
-- Dot support in setting names
+- Better way to check for errors
 
 ## Documentation
 
@@ -90,12 +91,48 @@ Note: It is possible to get settings from keys that are containing dots, for thi
 To get a string at runtime use `json_get_string()`. The function will return NULL if no corresponding setting was found.
 
 ```c
-char* str = json_get_string(json, "string", '.');
-
-if (str == NULL) {
-    printf("error: setting \"string\" doesn't exist\n");
-}
+char* str = json_get_string(json, "some_string", '.');
 ```
+
+#### Getting an integer setting
+
+To get an integer at runtime use `json_get_integer()`.
+
+```c
+long long integer = json_get_integer(json, "some_integer", '.');
+```
+
+Note: The function will return 0 if no corresponding setting was found. Other than an unexpected value, there is currently no way to distinguish if the value could be fetched or not.
+
+#### Getting a boolean setting
+
+To get a boolean at runtime use `json_get_boolean()`.
+
+```c
+int boolean = json_get_bool(json, "some_boolean", '.');
+```
+
+Note: The function will return 0 if no corresponding setting was found. Other than an unexpected value, there is currently no way to distinguish if the value could be fetched or not.
+
+#### Getting a floating point number setting
+
+To get a floating point number at runtime use `json_get_floating()`.
+
+```c
+long double floating = json_get_floating(json, "some_floating", '.');
+```
+
+Note: The function will return 0 if no corresponding setting was found. Other than an unexpected value, there is currently no way to distinguish if the value could be fetched or not.
+
+#### Getting a JSON object setting
+
+To get a JSON object at runtime use `json_get_floating()`.
+
+```c
+obj_t* obj = json_get_object(json, "some_object", '.');
+```
+
+Note: The function will return NULL if no corresponding setting was found.
 
 ### Saving object to file
 
