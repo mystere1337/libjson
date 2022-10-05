@@ -164,12 +164,19 @@ int main() {
     }
     
     /* Get string setting in the root object from it's name */
-    char* str = json_get_string(json, "string");
-    if (str == NULL) {
-        printf("error: setting \"string\" doesn't exist\n");
-        json_free(json);
-        return 1;
-    }
+    char* str = json_get_string(json, "some_str", '.');
+    
+    /* Get integer setting in the object named 'obj' inside root object */
+    long long some_int = json_get_int(json, "obj.some_int", '.');
+    
+    /* Get boolean setting in the object named 'obj' inside root object */
+    int some_bool = json_get_bool(json, "obj#some_bool", '#');
+    
+    /* Get floating point number setting in an object named 'abc.xyz' */
+    long double some_float = json_get_string(json, "abc.xyz#some_float", '#');
+    
+    /* Get object setting inside of root object*/
+    obj_t* obj = json_get_string(json, "some_obj", '.');
     
     /* Save the initialized object to a file */
     if (json_save(json, "./object.json") == -1) {
