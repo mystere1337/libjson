@@ -1,6 +1,9 @@
+:warning: The project is still in development and may contain
+memory leaks or critical bugs.
+
 # libjson
 
-A simple JSON parser and configuration manager.
+A simple JSON parser and configuration manager. Minimal.
 
 ## Features
 
