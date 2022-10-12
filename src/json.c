@@ -9,6 +9,18 @@
 #include <sys/mman.h>
 
 /**
+ * Frees a char** array
+ * @param array Array to free from memory
+ */
+void json_free_double_char_array(char** array) {
+    for (int i = 0; array[i] != NULL; i++) {
+        free(array[i]);
+    }
+
+    free(array);
+}
+
+/**
  * Gets file size in bytes
  * @param fd File descriptor
  * @return Size of file in bytes
@@ -647,6 +659,8 @@ char* json_get_string(obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
     setting_t* setting = json_get_setting(obj, key_array, 0);
 
+    json_free_double_char_array(key_array);
+
     if (setting == NULL || setting->type != String) {
         printf("error: can't find %s, or it isn't a string\n", str);
         return NULL;
@@ -665,6 +679,8 @@ char* json_get_string(obj_t* obj, const char* str, char separator) {
 int json_get_bool(obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
     setting_t* setting = json_get_setting(obj, key_array, 0);
+
+    json_free_double_char_array(key_array);
 
     if (setting == NULL || setting->type != Boolean) {
         printf("error: can't find %s, or it isn't a bool\n", str);
@@ -685,20 +701,14 @@ long long json_get_integer(obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
     setting_t* setting = json_get_setting(obj, key_array, 0);
 
+    json_free_double_char_array(key_array);
+
     if (setting == NULL || setting->type != Integer) {
         printf("error: can't find %s, or it isn't an integer\n", str);
         return 0;
     }
 
     return setting->long_type;
-}
-
-void json_free_double_char_array(char** array) {
-    for (int i = 0; array[i] != NULL; i++) {
-        free(array[i]);
-    }
-
-    free(array);
 }
 
 /**
@@ -732,6 +742,8 @@ obj_t* json_get_object(obj_t* obj, const char* str, char separator) {
 long double json_get_floating(obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
     setting_t* setting = json_get_setting(obj, key_array, 0);
+
+    json_free_double_char_array(key_array);
 
     if (setting == NULL || setting->type != Floating) {
         printf("error: can't find %s, or it isn't a floating point number\n", str);
