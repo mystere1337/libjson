@@ -436,6 +436,7 @@ char* json_dump(obj_t* obj) {
     char* tmp;
     char* str = malloc(2);
     strncpy(str, "{", 1);
+    str[1] = '\0';
 
     for (size_t i = 0; i < obj->settings_count; i++) {
         size_t needed = snprintf(NULL, 0, "\"%s\":", obj->settings[i]->name) + 1;
@@ -559,8 +560,11 @@ char** json_get_key_array(const char* str, const char separator) {
     double_sep[2] = '\0';
 
     if (strstr(str, double_sep) != NULL || str[0] == separator || str[len - 1] == separator) {
+        free(double_sep);
         return NULL;
     }
+
+    free(double_sep);
 
     size_t arr_len = json_get_key_array_len(str);
     char** str_array = malloc(sizeof(char*) * (arr_len + 1));
@@ -588,23 +592,43 @@ char** json_get_key_array(const char* str, const char separator) {
  * @param key_array Key array
  * @return Corresponding setting or NULL if not found
  */
-setting_t* json_get_setting(obj_t* obj, char** key) {
+setting_t* json_get_setting(obj_t* obj, char** key_array, int remove) {
     if (obj == NULL) {
         return NULL;
     }
 
     size_t key_count = 0;
 
-    for (size_t i = 0; key[i] != NULL; i++) {
+    for (size_t i = 0; key_array[i] != NULL; i++) {
         key_count++;
     }
 
     for (size_t i = 0; i < obj->settings_count; i++) {
-        if (strcmp(obj->settings[i]->name, key[0]) == 0) {
+        if (strcmp(obj->settings[i]->name, key_array[0]) == 0) {
             if (obj->settings[i]->type == Object && key_count - 1 != 0) {
-                return json_get_setting(obj->settings[i]->obj_type, &key[1]);
+                return json_get_setting(obj->settings[i]->obj_type, &key_array[1], remove);
             } else {
-                return obj->settings[i];
+                setting_t* ret = obj->settings[i];
+
+                // 1 2 3 4 5 6
+                // 0 1 2 3 4 5
+
+                if (remove) {
+                    if (i + 1 < obj->settings_count) {
+                        obj->settings[i] = obj->settings[i + 1];
+                    }
+
+                    setting_t** tmp = realloc(obj->settings, (obj->settings_count - 1) * sizeof(setting_t*));
+
+                    if (tmp == NULL && obj->settings_count > 1) {
+                        exit(1);
+                    }
+
+                    obj->settings_count -= 1;
+                    obj->settings = tmp;
+                }
+
+                return ret;
             }
         }
     }
@@ -621,7 +645,7 @@ setting_t* json_get_setting(obj_t* obj, char** key) {
  */
 char* json_get_string(obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
-    setting_t* setting = json_get_setting(obj, key_array);
+    setting_t* setting = json_get_setting(obj, key_array, 0);
 
     if (setting == NULL || setting->type != String) {
         printf("error: can't find %s, or it isn't a string\n", str);
@@ -640,7 +664,7 @@ char* json_get_string(obj_t* obj, const char* str, char separator) {
  */
 int json_get_bool(obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
-    setting_t* setting = json_get_setting(obj, key_array);
+    setting_t* setting = json_get_setting(obj, key_array, 0);
 
     if (setting == NULL || setting->type != Boolean) {
         printf("error: can't find %s, or it isn't a bool\n", str);
@@ -659,7 +683,7 @@ int json_get_bool(obj_t* obj, const char* str, char separator) {
  */
 long long json_get_integer(obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
-    setting_t* setting = json_get_setting(obj, key_array);
+    setting_t* setting = json_get_setting(obj, key_array, 0);
 
     if (setting == NULL || setting->type != Integer) {
         printf("error: can't find %s, or it isn't an integer\n", str);
@@ -667,6 +691,14 @@ long long json_get_integer(obj_t* obj, const char* str, char separator) {
     }
 
     return setting->long_type;
+}
+
+void json_free_double_char_array(char** array) {
+    for (int i = 0; array[i] != NULL; i++) {
+        free(array[i]);
+    }
+
+    free(array);
 }
 
 /**
@@ -678,7 +710,9 @@ long long json_get_integer(obj_t* obj, const char* str, char separator) {
  */
 obj_t* json_get_object(obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
-    setting_t* setting = json_get_setting(obj, key_array);
+    setting_t* setting = json_get_setting(obj, key_array, 0);
+
+    json_free_double_char_array(key_array);
 
     if (setting == NULL || setting->type != Object) {
         printf("error: can't find %s, or it isn't an object\n", str);
@@ -697,7 +731,7 @@ obj_t* json_get_object(obj_t* obj, const char* str, char separator) {
  */
 long double json_get_floating(obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
-    setting_t* setting = json_get_setting(obj, key_array);
+    setting_t* setting = json_get_setting(obj, key_array, 0);
 
     if (setting == NULL || setting->type != Floating) {
         printf("error: can't find %s, or it isn't a floating point number\n", str);
