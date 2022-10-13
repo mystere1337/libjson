@@ -36,11 +36,15 @@ struct setting_s {
 
 obj_t* json_from_file(const char *path);
 obj_t* json_from_string(const char* str);
+
 char* json_get_string(obj_t* obj, const char* str, char separator);
 int json_get_bool(obj_t* obj, const char* str, char separator);
 long long json_get_integer(obj_t* obj, const char* str, char separator);
 obj_t* json_get_object(obj_t* obj, const char* str, char separator);
 long double json_get_floating(obj_t* obj, const char* str, char separator);
+
+int json_remove_setting(obj_t* obj, const char* key, char separator);
+
 void json_free(obj_t* obj);
 int json_save(obj_t* obj, const char* path);
 char* json_dump(obj_t* obj);

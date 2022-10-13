@@ -622,12 +622,11 @@ setting_t* json_get_setting(obj_t* obj, char** key_array, int remove) {
             } else {
                 setting_t* ret = obj->settings[i];
 
-                // 1 2 3 4 5 6
-                // 0 1 2 3 4 5
-
                 if (remove) {
-                    if (i + 1 < obj->settings_count) {
-                        obj->settings[i] = obj->settings[i + 1];
+                    if (i != obj->settings_count - 1) {
+                        for (int j = 0; j < obj->settings_count - i - 1; j++) {
+                            obj->settings[i + j] = obj->settings[i + j + 1];
+                        }
                     }
 
                     setting_t** tmp = realloc(obj->settings, (obj->settings_count - 1) * sizeof(setting_t*));
@@ -751,4 +750,38 @@ long double json_get_floating(obj_t* obj, const char* str, char separator) {
     }
 
     return setting->double_type;
+}
+
+/**
+ * Removes a setting from an object at specified key
+ * @param obj Object to search in
+ * @param key Key to setting
+ * @param separator Separator
+ * @return 0 if obj is NULL, if setting doesn't exist,
+ */
+int json_remove_setting(obj_t* obj, const char* key, char separator) {
+    if (obj == NULL) {
+        return 0;
+    }
+
+    char** key_array = json_get_key_array(key, separator);
+    setting_t* setting = json_get_setting(obj, key_array, 1);
+
+    json_free_double_char_array(key_array);
+
+    if (setting == NULL) {
+        return 0;
+    }
+
+    free(setting->name);
+
+    if (setting->type == String) {
+        free(setting->string_type);
+    } else if (setting->type == Object && setting->obj_type != NULL) {
+        json_free(setting->obj_type);
+    }
+
+    free(setting);
+
+    return 1;
 }
