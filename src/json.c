@@ -757,7 +757,7 @@ long double json_get_floating(obj_t* obj, const char* str, char separator) {
  * @param obj Object to search in
  * @param key Key to setting
  * @param separator Separator
- * @return 0 if obj is NULL, if setting doesn't exist,
+ * @return 0 if obj is NULL, if setting doesn't exist, 1 on success
  */
 int json_remove_setting(obj_t* obj, const char* key, char separator) {
     if (obj == NULL) {
