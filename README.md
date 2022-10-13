@@ -17,6 +17,7 @@ A simple JSON parser and configuration manager. Minimal.
 - Object saving to file
 - Getting setting value at runtime
 - Dot support in setting names
+- Setting removal
 
 ### Supported types
 
