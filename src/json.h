@@ -1,5 +1,5 @@
-#ifndef LIBCFG_CFG_H
-#define LIBCFG_CFG_H
+#ifndef LIBJSON_JSON_H
+#define LIBJSON_JSON_H
 
 #include <stdarg.h>
 #include <glob.h>
@@ -58,4 +58,4 @@ int json_save(obj_t* obj, const char* path);
 char* json_dump(obj_t* obj, int format);
 void json_print(obj_t* obj, int format);
 
-#endif //LIBCFG_CFG_H
+#endif //LIBJSON_JSON_H
