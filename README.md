@@ -3,7 +3,7 @@ memory leaks or critical bugs.
 
 # libjson
 
-A simple JSON parser and configuration manager. Minimal.
+A simple and minimal JSON parser and configuration manager. The library does not currently work on Windows.
 
 ## Features
 
@@ -38,6 +38,7 @@ Types to be added are:
 - Add flags for file opening to chose if the user wants to create it automatically
 - List type
 - Better way to check for errors
+- Windows/MacOS support
 
 ## Documentation
 
