@@ -18,6 +18,7 @@ A simple and minimal JSON parser and configuration manager. The library does not
 - Getting setting value at runtime
 - Dot support in setting names
 - Setting removal
+- Setting addition
 
 ### Supported types
 
@@ -139,6 +140,66 @@ obj_t* obj = json_get_object(json, "some_object", '.');
 
 Note: The function will return NULL if no corresponding setting was found.
 
+### Adding/changing a setting at runtime
+
+In the same way as getting values at runtime, we can add and modify values at runtime. :warning: Big memory leak to fix.
+Trying to add a setting to a non-existing object will return a fail (0) and the action will not be made.
+
+#### Adding/Changing a string setting
+
+To change a string setting at runtime use `json_set_string()`
+
+```c
+int status = json_set_string(json, "string", '.', "test");
+if (status == 0) {
+    printf("error: failed to set string\n");
+}
+```
+
+#### Adding/Changing a boolean setting
+
+To change a boolean setting at runtime use `json_set_bool()`
+
+```c
+int status = json_set_bool(json, "keyname", '.', 0);
+if (status == 0) {
+    printf("error: failed to set boolean value\n");
+}
+```
+
+#### Adding/Changing an integer setting
+
+To change an integer setting at runtime use `json_set_integer()`
+
+```c
+int status = json_set_integer(json, "some_key", '.', 1337);
+if (status == 0) {
+    printf("error: failed to set integer value\n");
+}
+```
+
+#### Adding/Changing a floating setting
+
+To change a floating point number setting at runtime use `json_set_floating()`
+
+```c
+int status = json_set_floating(json, "some_key", '.', 3.1415);
+if (status == 0) {
+    printf("error: failed to set floating value\n");
+}
+```
+
+#### Adding/Changing an object setting
+
+To change an object setting at runtime use `json_set_object()`
+
+```c
+int status = json_set_object(json, "some_key", '.', some_object); // obj_t*
+if (status == 0) {
+    printf("error: failed to set object\n");
+}
+```
+
 ### Saving object to file
 
 You can save any JSON object to the desired file.
@@ -180,8 +241,14 @@ int main() {
     /* Get floating point number setting in an object named 'abc.xyz' */
     long double some_float = json_get_string(json, "abc.xyz#some_float", '#');
     
-    /* Get object setting inside of root object*/
+    /* Get object setting inside of root object */
     obj_t* obj = json_get_string(json, "some_obj", '.');
+    
+    /* Sets the 'some_str' string to value 'test' */
+    int status = json_set_string(json, "some_str", '.', "test");
+    if (status == 0) {
+        printf("error: failed to set string\n");
+    }
     
     /* Save the initialized object to a file */
     if (json_save(json, "./object.json") == -1) {
