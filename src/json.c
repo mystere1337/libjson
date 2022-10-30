@@ -9,6 +9,21 @@
 #include <sys/mman.h>
 
 /**
+ * Get key count in key_array
+ * @param key_array
+ * @return number of elements in the array
+ */
+size_t json_key_count(char** key_array) {
+    size_t key_count = 0;
+
+    for (size_t i = 0; key_array[i] != NULL; i++) {
+        key_count++;
+    }
+
+    return key_count;
+}
+
+/**
  * Frees a char** array
  * @param array Array to free from memory
  */
@@ -271,22 +286,32 @@ char* json_get_file_content(int fd) {
 }
 
 /**
+ * Frees a single setting from memory
+ * @param setting Setting object to free
+ */
+void json_free_setting(setting_t *setting) {
+    if (setting == NULL) {
+        return;
+    }
+
+    free(setting->name);
+
+    if (setting->type == String) {
+        free(setting->string_type);
+    } else if (setting->type == Object && setting->obj_type != NULL) {
+        json_free(setting->obj_type);
+    }
+
+    free(setting);
+}
+
+/**
  * Frees a JSON object.
  * @param obj object to free
  */
 void json_free(obj_t* obj) {
     for (size_t i = 0; i < obj->settings_count; i++) {
-        free(obj->settings[i]->name);
-
-        if (obj->settings[i]->type == String) {
-            free(obj->settings[i]->string_type);
-        }
-
-        if (obj->settings[i]->type == Object && obj->settings[i]->obj_type != NULL) {
-            json_free(obj->settings[i]->obj_type);
-        }
-
-        free(obj->settings[i]);
+        json_free_setting(obj->settings[i]);
     }
 
     free(obj->settings);
@@ -444,7 +469,7 @@ char* json_format(const char* str) {
  * @param obj JSON object to dump
  * @return JSON string
  */
-char* json_dump(obj_t* obj) {
+char* json_dump(obj_t* obj, int format) {
     char* tmp;
     char* str = malloc(2);
     strncpy(str, "{", 1);
@@ -500,7 +525,7 @@ char* json_dump(obj_t* obj) {
                     break;
                 }
 
-                char* dump = json_dump(obj->settings[i]->obj_type);
+                char* dump = json_dump(obj->settings[i]->obj_type, 0);
                 needed = snprintf(NULL, 0, "%s%s", dump, i == obj->settings_count - 1 ? "" : ",") + 1;
                 tmp = malloc(needed);
                 sprintf(tmp, "%s%s", dump, i == obj->settings_count - 1 ? "" : ",");
@@ -513,7 +538,26 @@ char* json_dump(obj_t* obj) {
     }
 
     str = json_strcat(str, "}");
-    return str;
+
+    if (format) {
+        char* formatted = json_format(str);
+        free(str);
+        return formatted;
+    } else {
+        return str;
+    }
+}
+
+/**
+ * Prints a JSON object on the standard output. Memory handled
+ * @param obj Object to print
+ * @param format Boolean; Format the output (1) or no (0)?
+ */
+void json_print(obj_t* obj, int format) {
+    char* dump = json_dump(obj, format);
+
+    printf("%s\n", dump);
+    free(dump);
 }
 
 /**
@@ -535,12 +579,10 @@ int json_save(obj_t* json, const char* path) {
         return -1;
     }
 
-    char* str = json_dump(json);
-    char* formatted = json_format(str);
-    write(fd, formatted, strlen(formatted));
+    char* str = json_dump(json, 0);
+    write(fd, str, strlen(str));
 
     free(str);
-    free(formatted);
     return 0;
 }
 
@@ -609,11 +651,7 @@ setting_t* json_get_setting(obj_t* obj, char** key_array, int remove) {
         return NULL;
     }
 
-    size_t key_count = 0;
-
-    for (size_t i = 0; key_array[i] != NULL; i++) {
-        key_count++;
-    }
+    size_t key_count = json_key_count(key_array);
 
     for (size_t i = 0; i < obj->settings_count; i++) {
         if (strcmp(obj->settings[i]->name, key_array[0]) == 0) {
@@ -768,20 +806,222 @@ int json_remove_setting(obj_t* obj, const char* key, char separator) {
     setting_t* setting = json_get_setting(obj, key_array, 1);
 
     json_free_double_char_array(key_array);
+    json_free_setting(setting);
 
-    if (setting == NULL) {
+    return 1;
+}
+
+/**
+ * Creates a string setting and returns a pointer to it
+ * @param name Name of the setting
+ * @param value Value of the setting
+ * @return The created setting
+ */
+setting_t* json_create_string_setting(const char* name, const char* value) {
+    setting_t* setting = malloc(sizeof(setting_t));
+
+    setting->type = String;
+    setting->name = malloc(strlen(name) + 1);
+    strcpy(setting->name, name);
+    setting->string_type = malloc(strlen(value) + 1);
+    strcpy(setting->string_type, value);
+
+    return setting;
+}
+
+/**
+ * Creates a boolean setting and returns a pointer to it
+ * @param name Name of the setting
+ * @param value Value of the setting
+ * @return The created setting
+ */
+setting_t* json_create_bool_setting(const char* name, int value) {
+    setting_t* setting = malloc(sizeof(setting_t));
+
+    setting->type = Boolean;
+    setting->name = malloc(strlen(name) + 1);
+    strcpy(setting->name, name);
+    setting->bool_type = value;
+
+    return setting;
+}
+
+/**
+ * Creates a integer setting and returns a pointer to it
+ * @param name Name of the setting
+ * @param value Value of the setting
+ * @return The created setting
+ */
+setting_t* json_create_integer_setting(const char* name, long long value) {
+    setting_t* setting = malloc(sizeof(setting_t));
+
+    setting->type = Integer;
+    setting->name = malloc(strlen(name) + 1);
+    strcpy(setting->name, name);
+    setting->long_type = value;
+
+    return setting;
+}
+
+/**
+ * Creates a floating point setting and returns a pointer to it
+ * @param name Name of the setting
+ * @param value Value of the setting
+ * @return The created setting
+ */
+setting_t* json_create_floating_setting(const char* name, long double value) {
+    setting_t* setting = malloc(sizeof(setting_t));
+
+    setting->type = Floating;
+    setting->name = malloc(strlen(name) + 1);
+    strcpy(setting->name, name);
+    setting->double_type = value;
+
+    return setting;
+}
+
+/**
+ * Creates a integer setting and returns a pointer to it
+ * @param name Name of the setting
+ * @param value Value of the setting
+ * @return The created setting
+ */
+setting_t* json_create_object_setting(const char* name, obj_t* value) {
+    setting_t* setting = malloc(sizeof(setting_t));
+
+    setting->type = Object;
+    setting->name = malloc(strlen(name) + 1);
+    strcpy(setting->name, name);
+    setting->obj_type = value;
+
+    return setting;
+}
+
+/**
+ * Adds a setting to an object. If the object is already containing a setting with this name, it will
+ * automatically be overwritten by the new one.
+ * @param obj Object to which add the setting
+ * @param setting Setting to add to the object
+ * @param key_array Array of keys containing the path
+ * @return 0 on failure, 1 on success
+ */
+int json_add_setting(obj_t* obj, setting_t* setting, char** key_array, size_t key_count) {
+    if (obj == NULL) {
         return 0;
     }
 
-    free(setting->name);
+    setting_t* old_setting = json_get_setting(obj, key_array, 1);
+    json_free_setting(old_setting);
 
-    if (setting->type == String) {
-        free(setting->string_type);
-    } else if (setting->type == Object && setting->obj_type != NULL) {
-        json_free(setting->obj_type);
+    for (size_t i = 0; i < obj->settings_count; i++) {
+        if (strcmp(obj->settings[i]->name, key_array[0]) == 0) {
+            if (obj->settings[i]->type == Object && key_count - 1 != 0) {
+                return json_add_setting(obj->settings[i]->obj_type, setting, &key_array[1], key_count - 1);
+            } else {
+                obj_t* obj_new = malloc(sizeof(obj_t));
+
+                obj_new->settings_count = obj->settings_count + 1;
+                for(size_t j = 0; j < obj->settings_count; j++) {
+                    obj_new->settings[j] = obj->settings[j];
+                }
+                obj_new->settings[obj_new->settings_count + 1] = setting;
+
+                free(obj);
+                obj = obj_new;
+                return 1;
+            }
+        }
     }
 
-    free(setting);
+    return 0;
+}
 
-    return 1;
+/**
+ * Sets a string setting at the desired key
+ * @param obj Object in which set the setting
+ * @param key Key path at which set the setting (ex: object.object.setting)
+ * @param separator Separator of keys in key path
+ * @param value Value to set in the setting
+ * @return 0 on failure, 1 on success. Can be a failure when the object in which to set the setting doesn't exist
+ */
+int json_set_string(obj_t* obj, const char* key, char separator, const char* value) {
+    char** key_array = json_get_key_array(key, separator);
+    size_t key_count = json_key_count(key_array);
+    int ret = json_add_setting(obj, json_create_string_setting(key_array[key_count], value), key_array, key_count);
+
+    json_free_double_char_array(key_array);
+
+    return ret;
+}
+
+/**
+ * Sets a boolean setting at the desired key
+ * @param obj Object in which set the setting
+ * @param key Key path at which set the setting (ex: object.object.setting)
+ * @param separator Separator of keys in key path
+ * @param value Value to set in the setting
+ * @return 0 on failure, 1 on success. Can be a failure when the object in which to set the setting doesn't exist
+ */
+int json_set_bool(obj_t* obj, const char* key, char separator, int value) {
+    char** key_array = json_get_key_array(key, separator);
+    size_t key_count = json_key_count(key_array);
+    int ret = json_add_setting(obj, json_create_bool_setting(key_array[key_count], value), key_array, key_count);
+
+    json_free_double_char_array(key_array);
+
+    return ret;
+}
+
+/**
+ * Sets a integer setting at the desired key
+ * @param obj Object in which set the setting
+ * @param key Key path at which set the setting (ex: object.object.setting)
+ * @param separator Separator of keys in key path
+ * @param value Value to set in the setting
+ * @return 0 on failure, 1 on success. Can be a failure when the object in which to set the setting doesn't exist
+ */
+int json_set_integer(obj_t* obj, const char* key, char separator, long long value) {
+    char** key_array = json_get_key_array(key, separator);
+    size_t key_count = json_key_count(key_array);
+    int ret = json_add_setting(obj, json_create_integer_setting(key_array[key_count], value), key_array, key_count);
+
+    json_free_double_char_array(key_array);
+
+    return ret;
+}
+
+/**
+ * Sets a floating setting at the desired key
+ * @param obj Object in which set the setting
+ * @param key Key path at which set the setting (ex: object.object.setting)
+ * @param separator Separator of keys in key path
+ * @param value Value to set in the setting
+ * @return 0 on failure, 1 on success. Can be a failure when the object in which to set the setting doesn't exist
+ */
+int json_set_floating(obj_t* obj, const char* key, char separator, long double value) {
+    char** key_array = json_get_key_array(key, separator);
+    size_t key_count = json_key_count(key_array);
+    int ret = json_add_setting(obj, json_create_floating_setting(key_array[key_count], value), key_array, key_count);
+
+    json_free_double_char_array(key_array);
+
+    return ret;
+}
+
+/**
+ * Sets an object setting at the desired key
+ * @param obj Object in which set the setting
+ * @param key Key path at which set the setting (ex: object.object.setting)
+ * @param separator Separator of keys in key path
+ * @param value Value to set in the setting
+ * @return 0 on failure, 1 on success. Can be a failure when the object in which to set the setting doesn't exist
+ */
+int json_set_object(obj_t* obj, const char* key, char separator, obj_t* value) {
+    char** key_array = json_get_key_array(key, separator);
+    size_t key_count = json_key_count(key_array);
+    int ret = json_add_setting(obj, json_create_object_setting(key_array[key_count], value), key_array, key_count);
+
+    json_free_double_char_array(key_array);
+
+    return ret;
 }
