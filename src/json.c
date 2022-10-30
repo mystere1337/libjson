@@ -914,22 +914,23 @@ int json_add_setting(obj_t* obj, setting_t* setting, char** key_array, size_t ke
     json_free_setting(old_setting);
 
     for (size_t i = 0; i < obj->settings_count; i++) {
-        if (strcmp(obj->settings[i]->name, key_array[0]) == 0) {
+        if (strcmp(obj->settings[i]->name, key_array[0]) == 0 && key_count > 1) {
             if (obj->settings[i]->type == Object && key_count - 1 != 0) {
                 return json_add_setting(obj->settings[i]->obj_type, setting, &key_array[1], key_count - 1);
-            } else {
-                obj_t* obj_new = malloc(sizeof(obj_t));
-
-                obj_new->settings_count = obj->settings_count + 1;
-                for(size_t j = 0; j < obj->settings_count; j++) {
-                    obj_new->settings[j] = obj->settings[j];
-                }
-                obj_new->settings[obj_new->settings_count + 1] = setting;
-
-                free(obj);
-                obj = obj_new;
-                return 1;
             }
+        } else {
+            obj_t* obj_new = malloc(sizeof(obj_t));
+
+            obj_new->settings_count = obj->settings_count + 1;
+            obj_new->settings = malloc(sizeof(setting_t*) * (obj->settings_count + 1));
+            for(size_t j = 0; j < obj->settings_count; j++) {
+                obj_new->settings[j] = malloc(sizeof(setting_t));
+                *(obj_new->settings[j]) = *(obj->settings[j]);
+            }
+            obj_new->settings[obj->settings_count] = setting;
+
+            *obj = *obj_new;
+            return 1;
         }
     }
 
@@ -947,7 +948,8 @@ int json_add_setting(obj_t* obj, setting_t* setting, char** key_array, size_t ke
 int json_set_string(obj_t* obj, const char* key, char separator, const char* value) {
     char** key_array = json_get_key_array(key, separator);
     size_t key_count = json_key_count(key_array);
-    int ret = json_add_setting(obj, json_create_string_setting(key_array[key_count], value), key_array, key_count);
+    setting_t* setting = json_create_string_setting(key_array[key_count - 1], value);
+    int ret = json_add_setting(obj, setting, key_array, key_count);
 
     json_free_double_char_array(key_array);
 
@@ -965,7 +967,7 @@ int json_set_string(obj_t* obj, const char* key, char separator, const char* val
 int json_set_bool(obj_t* obj, const char* key, char separator, int value) {
     char** key_array = json_get_key_array(key, separator);
     size_t key_count = json_key_count(key_array);
-    int ret = json_add_setting(obj, json_create_bool_setting(key_array[key_count], value), key_array, key_count);
+    int ret = json_add_setting(obj, json_create_bool_setting(key_array[key_count - 1], value), key_array, key_count);
 
     json_free_double_char_array(key_array);
 
@@ -983,7 +985,7 @@ int json_set_bool(obj_t* obj, const char* key, char separator, int value) {
 int json_set_integer(obj_t* obj, const char* key, char separator, long long value) {
     char** key_array = json_get_key_array(key, separator);
     size_t key_count = json_key_count(key_array);
-    int ret = json_add_setting(obj, json_create_integer_setting(key_array[key_count], value), key_array, key_count);
+    int ret = json_add_setting(obj, json_create_integer_setting(key_array[key_count - 1], value), key_array, key_count);
 
     json_free_double_char_array(key_array);
 
@@ -1001,7 +1003,7 @@ int json_set_integer(obj_t* obj, const char* key, char separator, long long valu
 int json_set_floating(obj_t* obj, const char* key, char separator, long double value) {
     char** key_array = json_get_key_array(key, separator);
     size_t key_count = json_key_count(key_array);
-    int ret = json_add_setting(obj, json_create_floating_setting(key_array[key_count], value), key_array, key_count);
+    int ret = json_add_setting(obj, json_create_floating_setting(key_array[key_count - 1], value), key_array, key_count);
 
     json_free_double_char_array(key_array);
 
@@ -1019,7 +1021,7 @@ int json_set_floating(obj_t* obj, const char* key, char separator, long double v
 int json_set_object(obj_t* obj, const char* key, char separator, obj_t* value) {
     char** key_array = json_get_key_array(key, separator);
     size_t key_count = json_key_count(key_array);
-    int ret = json_add_setting(obj, json_create_object_setting(key_array[key_count], value), key_array, key_count);
+    int ret = json_add_setting(obj, json_create_object_setting(key_array[key_count - 1], value), key_array, key_count);
 
     json_free_double_char_array(key_array);
 

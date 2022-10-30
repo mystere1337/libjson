@@ -43,13 +43,11 @@ long long json_get_integer(obj_t* obj, const char* str, char separator);
 obj_t* json_get_object(obj_t* obj, const char* str, char separator);
 long double json_get_floating(obj_t* obj, const char* str, char separator);
 
-/*
 int json_set_string(obj_t* obj, const char* key, char separator, const char* value);
 int json_set_bool(obj_t* obj, const char* key, char separator, int value);
 int json_set_integer(obj_t* obj, const char* key, char separator, long long value);
 int json_set_floating(obj_t* obj, const char* key, char separator, long double value);
 int json_set_object(obj_t* obj, const char* key, char separator, obj_t* value);
- */
 
 int json_remove_setting(obj_t* obj, const char* key, char separator);
 
