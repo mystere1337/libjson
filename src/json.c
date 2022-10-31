@@ -1,11 +1,11 @@
 #include "json.h"
 
 #include <fcntl.h>
-#include <malloc.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <sys/mman.h>
 
 /**
@@ -43,7 +43,7 @@ void json_free_double_char_array(char** array) {
 size_t json_get_file_size(int fd) {
     struct stat s;
 
-    int status = fstat(fd, &s);
+    fstat(fd, &s);
     return s.st_size;
 }
 
@@ -259,7 +259,7 @@ obj_t* json_from_string(const char* str) {
 
         for (int i = 0; i < obj->settings_count; i++) {
             obj->settings[i] = parse_setting_line(settings[i]);
-        };
+        }
     }
 
     for (size_t i = 0; settings[i] != NULL; i++) {

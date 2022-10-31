@@ -1,9 +1,7 @@
 #ifndef LIBJSON_JSON_H
 #define LIBJSON_JSON_H
 
-#include <stdarg.h>
-#include <glob.h>
-#include <stdbool.h>
+#include <stddef.h>
 
 enum setting_type_e {
     Boolean,
