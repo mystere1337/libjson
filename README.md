@@ -17,8 +17,8 @@ A simple and minimal JSON parser and configuration manager for POSIX compliant o
 - Object saving to file
 - Getting setting value at runtime
 - Dot support in setting names
-- Setting removalecome a tester and 
-- Setting addition
+- Removing setting at runtime
+- Adding setting at runtime
 
 ### Supported types
 
