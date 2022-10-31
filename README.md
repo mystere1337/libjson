@@ -127,7 +127,7 @@ Note: The function will return 0 if no corresponding setting was found. Other th
 
 #### Getting a JSON object setting
 
-To get a JSON object at runtime use `json_get_floating()`.
+To get a JSON object at runtime use `json_get_object()`.
 
 ```c
 obj_t* obj = json_get_object(json, "some_object", '.');
