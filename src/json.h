@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-enum setting_type_e {
+enum json_setting_type_e {
     Boolean,
     Integer,
     Floating,
@@ -11,48 +11,48 @@ enum setting_type_e {
     Object,
 };
 
-typedef struct obj_s obj_t;
-typedef struct setting_s setting_t;
+typedef struct json_obj_s json_obj_t;
+typedef struct json_setting_s json_setting_t;
 
-struct obj_s {
-    setting_t** settings;
+struct json_obj_s {
+    json_setting_t** settings;
     size_t settings_count;
 };
 
-struct setting_s {
+struct json_setting_s {
     char* name;
-    enum setting_type_e type;
+    enum json_setting_type_e type;
 
     union {
         int bool_type;
         long long long_type;
         long double double_type;
         char* string_type;
-        obj_t* obj_type;
+        json_obj_t* obj_type;
     };
 };
 
-obj_t* json_from_file(const char *path);
-obj_t* json_from_string(const char* str);
+json_obj_t* json_from_file(const char *path);
+json_obj_t* json_from_string(const char* str);
 
-char* json_get_string(obj_t* obj, const char* str, char separator);
-int json_get_bool(obj_t* obj, const char* str, char separator);
-long long json_get_integer(obj_t* obj, const char* str, char separator);
-obj_t* json_get_object(obj_t* obj, const char* str, char separator);
-long double json_get_floating(obj_t* obj, const char* str, char separator);
+char* json_get_string(json_obj_t* obj, const char* str, char separator);
+int json_get_bool(json_obj_t* obj, const char* str, char separator);
+long long json_get_integer(json_obj_t* obj, const char* str, char separator);
+json_obj_t* json_get_object(json_obj_t* obj, const char* str, char separator);
+long double json_get_floating(json_obj_t* obj, const char* str, char separator);
 
-int json_set_string(obj_t* obj, const char* key, char separator, const char* value);
-int json_set_bool(obj_t* obj, const char* key, char separator, int value);
-int json_set_integer(obj_t* obj, const char* key, char separator, long long value);
-int json_set_floating(obj_t* obj, const char* key, char separator, long double value);
-int json_set_object(obj_t* obj, const char* key, char separator, obj_t* value);
+int json_set_string(json_obj_t* obj, const char* key, char separator, const char* value);
+int json_set_bool(json_obj_t* obj, const char* key, char separator, int value);
+int json_set_integer(json_obj_t* obj, const char* key, char separator, long long value);
+int json_set_floating(json_obj_t* obj, const char* key, char separator, long double value);
+int json_set_object(json_obj_t* obj, const char* key, char separator, json_obj_t* value);
 
-int json_remove_setting(obj_t* obj, const char* key, char separator);
+int json_remove_setting(json_obj_t* obj, const char* key, char separator);
 
-void json_free(obj_t* obj);
-int json_save(obj_t* obj, const char* path);
+void json_free(json_obj_t* obj);
+int json_save(json_obj_t* obj, const char* path);
 
-char* json_dump(obj_t* obj, int format);
-void json_print(obj_t* obj, int format);
+char* json_dump(json_obj_t* obj, int format);
+void json_print(json_obj_t* obj, int format);
 
 #endif //LIBJSON_JSON_H

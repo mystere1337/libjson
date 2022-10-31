@@ -40,18 +40,18 @@ You can also contribute to the project if you're interested. For now, the suppor
 
 ### Objects
 
-To store an object at runtime, use the struct `obj_t`. An `obj_t` contains individual settings that can be of any supported type.
+To store an object at runtime, use the struct `json_obj_t`. A `json_obj_t` contains individual settings that can be of any supported type.
 
 ### Creating and loading objects
 
-Creating an object is the only way to initialize an `obj_t`.
+Creating an object is the only way to initialize a `json_obj_t`.
 
 #### From file
 
-Note: *Opening from a file creates the corresponding file if it doesn't exists*
+Note: *Opening from a file creates the corresponding file if it doesn't exist*
 
 ```c
-obj_t* json = json_from_file("./object.json");
+json_obj_t* json = json_from_file("./object.json");
 
 if (json == NULL) {
     printf("error: invalid configuration\n");
@@ -62,7 +62,7 @@ if (json == NULL) {
 #### From string
 
 ```c
-obj_t* json = json_from_string("{\"key\":\"value\"}");
+json_obj_t* json = json_from_string("{\"key\":\"value\"}");
 
 if (json == NULL) {
     printf("error: invalid configuration\n");
@@ -72,7 +72,7 @@ if (json == NULL) {
 
 ### Getting settings at runtime
 
-Any function that gets a setting will return the desired type, and will need an `obj_t` parameter and the setting identifier of form `objX.objY.setting` as second parameter. Example:
+Any function that gets a setting will return the desired type, and will need a `json_obj_t` parameter and the setting identifier of form `objX.objY.setting` as second parameter. Example:
 
 ```json
 {
@@ -85,7 +85,7 @@ Any function that gets a setting will return the desired type, and will need an 
 }
 ```
 
-Note: It is possible to get settings from keys that are containing dots, for this you need to specify the separator as the third parameter, `objX|objY|setting.2` with `|` separator will return `69` as the result, following the example above.
+Note: It is possible to get settings from keys that contains dots, for this you need to specify the separator as the third parameter, `objX|objY|setting.2` with `|` separator will return `69` as the result, following the example above.
 
 #### Getting a string setting
 
@@ -130,7 +130,7 @@ Note: The function will return 0 if no corresponding setting was found. Other th
 To get a JSON object at runtime use `json_get_object()`.
 
 ```c
-obj_t* obj = json_get_object(json, "some_object", '.');
+json_obj_t* obj = json_get_object(json, "some_object", '.');
 ```
 
 Note: The function will return NULL if no corresponding setting was found.
@@ -186,7 +186,7 @@ if (json_set_floating(json, "some_key", '.', 3.1415) == 0) {
 To change an object setting at runtime use `json_set_object()`
 
 ```c
-if (json_set_object(json, "some_key", '.', some_object /* (obj_t*) */) == 0) {
+if (json_set_object(json, "some_key", '.', some_object /* (json_obj_t*) */) == 0) {
     printf("error: failed to set object\n");
 }
 ```
@@ -214,7 +214,7 @@ json_free(json);
 ```c
 int main() {
     /* Initialize the root object */
-    obj_t* json = json_from_file("./object.json");
+    json_obj_t* json = json_from_file("./object.json");
     if (json == NULL) {
         printf("error: invalid configuration\n");
         return 1;
@@ -233,7 +233,7 @@ int main() {
     long double some_float = json_get_string(json, "abc.xyz#some_float", '#');
     
     /* Get object setting inside of root object */
-    obj_t* obj = json_get_string(json, "some_obj", '.');
+    json_obj_t* obj = json_get_string(json, "some_obj", '.');
     
     /* Sets the 'some_str' setting to string value 'test' */
     if (json_set_string(json, "some_str", '.', "test") == 0) {
