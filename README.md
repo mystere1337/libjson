@@ -30,15 +30,12 @@ You can also contribute to the project if you're interested. For now, the suppor
 - `Booleans`
 - `JSON Objects`
 
-Types to be added are:
-- `Lists`
-
 ### Planned features
 
-- Add flags for file opening to chose if the user wants to create it automatically
 - List type
 - Better way to check for errors
 - Windows/MacOS support
+- Support wide characters
 
 ## Documentation
 
