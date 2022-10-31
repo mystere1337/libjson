@@ -1,11 +1,12 @@
 #include "json.h"
 
+#include <fcntl.h>
 #include <malloc.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <string.h>
 #include <stdlib.h>
-#include <fcntl.h>
+#include <sys/mman.h>
 
 /**
  * Get key count in key_array
@@ -274,22 +275,13 @@ obj_t* json_from_string(const char* str) {
  * @return string containing file content
  */
 char* json_get_file_content(int fd) {
-    FILE* stream;
-    char* file_content;
-    size_t file_size = 0;
+    off_t raw_len = lseek(fd, 0, SEEK_END);
+    char *raw_ptr = mmap(0, raw_len, PROT_READ, MAP_PRIVATE, fd, 0);
+    char *file_content = malloc(raw_len + 1);
+    file_content[raw_len] = '\0';
+    strncpy(file_content, raw_ptr, raw_len);
+    munmap(raw_ptr, raw_len);
 
-    stream = fdopen(fd, "rb");
-
-    fseek(stream, 0L, SEEK_END);
-    file_size = ftell(stream);
-    fseek(stream, 0L, SEEK_SET);
-
-    file_content = malloc(file_size + 1);
-
-    size_t size = fread(file_content, 1, file_size, stream);
-    file_content[size] = '\0';
-
-    fclose(stream);
     return file_content;
 }
 

@@ -3,7 +3,7 @@ memory leaks or critical bugs.
 
 # libjson
 
-A simple and minimal JSON parser and configuration manager. The library does not currently work on Windows.
+A simple and minimal JSON parser and configuration manager for POSIX compliant operating systems.
 
 ## Features
 
@@ -34,7 +34,6 @@ You can also contribute to the project if you're interested. For now, the suppor
 
 - List type
 - Better way to check for errors
-- Windows/MacOS support
 - Support wide characters
 
 ## Documentation
