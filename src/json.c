@@ -125,8 +125,8 @@ setting_t* parse_setting_line(char *string) {
 
     int found = 0;
     int quotes = 0;
-    int colon = 0;
-    for (int i = 0; i < len; i++) {
+    size_t colon = 0;
+    for (size_t i = 0; i < len; i++) {
         if (string[i] == '\"' && (i == 0 ? 1 : string[i - 1] != '\\')) { quotes++; }
         if (string[i] == ':' && !(quotes % 2) && !found) {
             found = 1;
@@ -152,7 +152,7 @@ setting_t* parse_setting_line(char *string) {
     } else if (str_value[0] == 't' || str_value[0] == 'f') {
         set->type = Boolean;
         set->bool_type = strcmp(str_value, "true") == 0 ? 1 : 0;
-    } else if (str_value[0] == '-' || str_value[0] >= '0' && str_value[0] <= '9') {
+    } else if (str_value[0] == '-' || (str_value[0] >= '0' && str_value[0] <= '9')) {
         if (strchr(str_value, '.')) {
             set->type = Floating;
             set->double_type = strtod(str_value, NULL);
@@ -213,9 +213,9 @@ char** json_get_string_settings(const char *str) {
 
     int quotes = 0;
     int braces = 0;
-    int prev_pos = 0;
+    size_t prev_pos = 0;
     int str_index = 0;
-    for (int i = 0; isolated[i] != '\0'; i++) {
+    for (size_t i = 0; isolated[i] != '\0'; i++) {
         if (isolated[i] == '\"' && (i == 0 ? 1 : isolated[i - 1] != '\\')) { quotes++; }
         if (isolated[i] == '{' && !(quotes % 2)) { braces++; }
         if (isolated[i] == '}' && !(quotes % 2)) { braces--; }
@@ -257,7 +257,7 @@ obj_t* json_from_string(const char* str) {
     if (obj->settings_count) {
         obj->settings = malloc(sizeof(setting_t) * obj->settings_count);
 
-        for (int i = 0; i < obj->settings_count; i++) {
+        for (size_t i = 0; i < obj->settings_count; i++) {
             obj->settings[i] = parse_setting_line(settings[i]);
         }
     }
@@ -472,8 +472,7 @@ char* json_format(const char* str) {
 char* json_dump(obj_t* obj, int format) {
     char* tmp;
     char* str = malloc(2);
-    strncpy(str, "{", 1);
-    str[1] = '\0';
+    strncpy(str, "{", 2);
 
     for (size_t i = 0; i < obj->settings_count; i++) {
         size_t needed = snprintf(NULL, 0, "\"%s\":", obj->settings[i]->name) + 1;
@@ -624,7 +623,7 @@ char** json_get_key_array(const char* str, const char separator) {
     char** str_array = malloc(sizeof(char*) * (arr_len + 1));
     str_array[arr_len] = NULL;
 
-    for (int i = 0, j = 0, k = 0; str[i] != '\0'; i++) {
+    for (size_t i = 0, j = 0, k = 0; str[i] != '\0'; i++) {
         if (str[i] == separator || i == len - 1) {
             int offset = (i == len - 1) ? 2 : 1;
 
@@ -662,7 +661,7 @@ setting_t* json_get_setting(obj_t* obj, char** key_array, int remove) {
 
                 if (remove) {
                     if (i != obj->settings_count - 1) {
-                        for (int j = 0; j < obj->settings_count - i - 1; j++) {
+                        for (size_t j = 0; j < obj->settings_count - i - 1; j++) {
                             obj->settings[i + j] = obj->settings[i + j + 1];
                         }
                     }
