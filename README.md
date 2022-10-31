@@ -1,5 +1,5 @@
 :warning: The project is still in development and may contain
-memory leaks or critical bugs.
+memory leaks or critical bugs. Please report your issues in the [dedicated section](https://github.com/mystere1337/libjson/issues)
 
 # libjson
 
@@ -17,7 +17,7 @@ A simple and minimal JSON parser and configuration manager for POSIX compliant o
 - Object saving to file
 - Getting setting value at runtime
 - Dot support in setting names
-- Setting removal
+- Setting removalecome a tester and 
 - Setting addition
 
 ### Supported types
