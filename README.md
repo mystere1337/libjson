@@ -235,7 +235,7 @@ int main() {
     /* Get object setting inside of root object */
     obj_t* obj = json_get_string(json, "some_obj", '.');
     
-    /* Sets the 'some_str' string to value 'test' */
+    /* Sets the 'some_str' setting to string value 'test' */
     if (json_set_string(json, "some_str", '.', "test") == 0) {
         printf("error: failed to set string\n");
     }
