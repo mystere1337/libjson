@@ -53,6 +53,7 @@ int json_remove_setting(obj_t* obj, const char* key, char separator);
 
 void json_free(obj_t* obj);
 int json_save(obj_t* obj, const char* path);
+
 char* json_dump(obj_t* obj, int format);
 void json_print(obj_t* obj, int format);
 

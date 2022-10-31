@@ -224,7 +224,7 @@ int main() {
         return 1;
     }
     
-    /* Get string setting in the root object from it's name */
+    /* Get string setting in the root object from its name */
     char* str = json_get_string(json, "some_str", '.');
     
     /* Get integer setting in the object named 'obj' inside root object */
@@ -240,13 +240,12 @@ int main() {
     obj_t* obj = json_get_string(json, "some_obj", '.');
     
     /* Sets the 'some_str' string to value 'test' */
-    int status = json_set_string(json, "some_str", '.', "test");
-    if (status == 0) {
+    if (json_set_string(json, "some_str", '.', "test") == 0) {
         printf("error: failed to set string\n");
     }
     
     /* Save the initialized object to a file */
-    if (json_save(json, "./object.json") == -1) {
+    if (json_save(json, "./object.json") == 0) {
         printf("error: failed to save configuration\n");
     }
 

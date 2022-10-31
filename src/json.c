@@ -564,26 +564,26 @@ void json_print(obj_t* obj, int format) {
  * Writes a JSON object to disk
  * @param json Object to save
  * @param path Path to file that will contain the object
- * @return -1 on error, 0 on success.
+ * @return 0 on error, 1 on success.
  */
 int json_save(obj_t* json, const char* path) {
     if (access(path, F_OK) == 0) {
         if (unlink(path) == -1) {
-            return -1;
+            return 0;
         }
     }
 
     int fd = open(path, O_RDWR | O_CREAT, 0600);
 
     if (fd == -1) {
-        return -1;
+        return 0;
     }
 
     char* str = json_dump(json, 0);
     write(fd, str, strlen(str));
 
     free(str);
-    return 0;
+    return 1;
 }
 
 /**
