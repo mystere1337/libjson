@@ -156,8 +156,7 @@ if (status == 0) {
 To change a boolean setting at runtime use `json_set_bool()`
 
 ```c
-int status = json_set_bool(json, "keyname", '.', 0);
-if (status == 0) {
+if (json_set_bool(json, "keyname", '.', 0) == 0) {
     printf("error: failed to set boolean value\n");
 }
 ```
@@ -167,8 +166,7 @@ if (status == 0) {
 To change an integer setting at runtime use `json_set_integer()`
 
 ```c
-int status = json_set_integer(json, "some_key", '.', 1337);
-if (status == 0) {
+if (json_set_integer(json, "some_key", '.', 1337) == 0) {
     printf("error: failed to set integer value\n");
 }
 ```
@@ -178,8 +176,7 @@ if (status == 0) {
 To change a floating point number setting at runtime use `json_set_floating()`
 
 ```c
-int status = json_set_floating(json, "some_key", '.', 3.1415);
-if (status == 0) {
+if (json_set_floating(json, "some_key", '.', 3.1415) == 0) {
     printf("error: failed to set floating value\n");
 }
 ```
@@ -189,8 +186,7 @@ if (status == 0) {
 To change an object setting at runtime use `json_set_object()`
 
 ```c
-int status = json_set_object(json, "some_key", '.', some_object); // obj_t*
-if (status == 0) {
+if (json_set_object(json, "some_key", '.', some_object /* (obj_t*) */) == 0) {
     printf("error: failed to set object\n");
 }
 ```
