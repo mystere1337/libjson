@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.23)
-project(libcfg C)
+project(libjson C)
 
 set(CMAKE_C_STANDARD 23)
 
-add_library(libcfg src/json.c)
+add_library(libjson src/json.c)
