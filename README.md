@@ -137,7 +137,7 @@ Note: The function will return NULL if no corresponding setting was found.
 
 ### Adding/changing a setting at runtime
 
-In the same way as getting values at runtime, we can add and modify values at runtime. :warning: Big memory leak to fix.
+In the same way as getting values at runtime, we can add and modify values at runtime.
 Trying to add a setting to a non-existing object will return a fail (0) and the action will not be made.
 
 #### Adding/Changing a string setting

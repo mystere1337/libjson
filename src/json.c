@@ -929,7 +929,13 @@ int json_add_setting(obj_t* obj, setting_t* setting, char** key_array, size_t ke
             }
             obj_new->settings[obj->settings_count] = setting;
 
-            *obj = *obj_new; // todo: fix memory leak
+            for(size_t j = 0; j < obj->settings_count; j++) {
+                free(obj->settings[j]);
+            }
+            free(obj->settings);
+
+            *obj = *obj_new;
+            free(obj_new);
             return 1;
         }
     }
