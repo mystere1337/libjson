@@ -1,5 +1,4 @@
-:warning: The project is still in development and may contain
-memory leaks or critical bugs. Please report your issues in the [dedicated section](https://github.com/mystere1337/libjson/issues)
+If you have any issues using the library, please report your issues in the [dedicated section](https://github.com/mystere1337/libjson/issues)
 
 # libjson
 
