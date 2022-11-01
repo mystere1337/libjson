@@ -200,13 +200,25 @@ char* json_align(const char* str) {
 /**
  * Extracts strings from a serialized JSON object, each containing one setting of the object
  * @param str Serialized JSON string
- * @return Array of json settings
+ * @return Array of json setting names
  */
 char** json_get_string_settings(const char *str) {
     char* aligned = json_align(str);
+    size_t len = strlen(aligned);
+
+    if (str[0] != '{' || str[len - 1] != '}') {
+        free(aligned);
+        return NULL;
+    }
+
     char* isolated = json_isolate_content(aligned);
-    size_t isolated_len = strlen(isolated);
     size_t setting_count = json_count_isolated_settings(isolated);
+
+    if (setting_count < 1 && len > 2) {
+        free(aligned);
+        free(isolated);
+        return NULL;
+    }
 
     char** setting_strings = malloc(sizeof(char*) * (setting_count + 1));
     setting_strings[setting_count] = NULL;
@@ -219,12 +231,12 @@ char** json_get_string_settings(const char *str) {
         if (isolated[i] == '\"' && (i == 0 ? 1 : isolated[i - 1] != '\\')) { quotes++; }
         if (isolated[i] == '{' && !(quotes % 2)) { braces++; }
         if (isolated[i] == '}' && !(quotes % 2)) { braces--; }
-        if ((isolated[i] == ',' && !(quotes % 2) && !braces) || i == isolated_len - 1) {
-            int offset = i == isolated_len - 1 ? 2 : 1;
+        if ((isolated[i] == ',' && !(quotes % 2) && !braces) || i == len - 3) {
+            int offset = i == len - 3 ? 2 : 1;
 
             setting_strings[str_index] = malloc(i - prev_pos + offset);
             setting_strings[str_index][i - prev_pos + offset - 1] = '\0';
-            strncpy(setting_strings[str_index], &isolated[prev_pos], i == isolated_len - 1 ? i + 1 - prev_pos : i - prev_pos);
+            strncpy(setting_strings[str_index], &isolated[prev_pos], i == len - 3 ? i + 1 - prev_pos : i - prev_pos);
 
             str_index++;
             prev_pos = i + 1;
@@ -243,12 +255,16 @@ char** json_get_string_settings(const char *str) {
  * @return -1 if unsuccessful, 0 if successful
  */
 json_obj_t* json_from_string(const char* str) {
+    char** settings = json_get_string_settings(str);
+
+    if (settings == NULL) {
+        return NULL;
+    }
+
     json_obj_t* obj = malloc(sizeof(json_obj_t));
 
     obj->settings = NULL;
     obj->settings_count = (size_t)0;
-
-    char** settings = json_get_string_settings(str);
 
     for (int i = 0; settings[i] != NULL; i++) {
         obj->settings_count++;
