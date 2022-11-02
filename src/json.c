@@ -97,7 +97,7 @@ char* json_isolate_content(const char *str) {
  * @return Number of settings in string
  */
 size_t json_count_isolated_settings(const char *str) {
-    size_t count = 0;
+    size_t count = 1;
 
     int quotes = 0;
     int braces = 0;
@@ -105,7 +105,7 @@ size_t json_count_isolated_settings(const char *str) {
         if (str[i] == '\"' && (i == 0 ? 1 : str[i - 1] != '\\')) { quotes++; }
         if (str[i] == '{' && !(quotes % 2)) { braces++; }
         if (str[i] == '}' && !(quotes % 2)) { braces--; }
-        if (str[i] == ':' && !(quotes % 2) && !braces) {
+        if (str[i] == ',' && !(quotes % 2) && !braces && str[i+1] == '"') {
             count++;
         }
     }
@@ -114,24 +114,53 @@ size_t json_count_isolated_settings(const char *str) {
 }
 
 /**
+ * Frees a single setting from memory
+ * @param setting Setting object to free
+ */
+void json_free_setting(json_setting_t *setting) {
+    if (setting == NULL) {
+        return;
+    }
+
+    free(setting->name);
+
+    if (setting->type == String) {
+        free(setting->string_type);
+    } else if (setting->type == Object && setting->obj_type != NULL) {
+        json_free(setting->obj_type);
+    }
+
+    free(setting);
+}
+
+/**
  * Deserializes unique json setting
  * @param string Serialized setting of type "key":"value"
  * @return -1 on error, 0 on success
  */
-json_setting_t* parse_setting_line(char *string) {
+json_setting_t* parse_setting_line(const char *string) {
     json_setting_t* set = malloc(sizeof(json_setting_t));
     size_t len = strlen(string);
     char* str_value;
 
     int found = 0;
     int quotes = 0;
+    int mallocced = 0;
     size_t colon = 0;
     for (size_t i = 0; i < len; i++) {
         if (string[i] == '\"' && (i == 0 ? 1 : string[i - 1] != '\\')) { quotes++; }
-        if (string[i] == ':' && !(quotes % 2) && !found) {
+        if (string[i] == ',' && i == len - 1) {
+            if (mallocced == 1) {
+                free(set->name);
+            }
+            free(set);
+            return NULL;
+        }
+        if (string[i] == ':' && !(quotes % 2) && !found && string[i - 1] == '\"') {
             found = 1;
             colon = i;
             set->name = malloc(i - 1);
+            mallocced = 1;
             set->name[i - 2] = '\0';
             strncpy(set->name, &string[1], i - 2);
         }
@@ -167,7 +196,10 @@ json_setting_t* parse_setting_line(char *string) {
         set->type = Object;
         set->obj_type = NULL;
     } else {
-        printf("error: setting '%s' is of an unknown type\n", string);
+        free(set->name);
+        free(set);
+        free(str_value);
+        return NULL;
     }
 
     free(str_value);
@@ -271,17 +303,26 @@ json_obj_t* json_from_string(const char* str) {
     }
 
     if (obj->settings_count) {
-        obj->settings = malloc(sizeof(json_setting_t) * obj->settings_count);
+        obj->settings = calloc(sizeof(json_setting_t) * obj->settings_count, sizeof(json_setting_t*));
 
         for (size_t i = 0; i < obj->settings_count; i++) {
-            obj->settings[i] = parse_setting_line(settings[i]);
+            json_setting_t* setting = parse_setting_line(settings[i]);
+
+            if (setting == NULL) {
+                for (size_t j = 0; j < obj->settings_count; j++) {
+                    json_free_setting(obj->settings[j]);
+                }
+                free(obj->settings);
+                free(obj);
+
+                json_free_double_char_array(settings);
+                return NULL;
+            }
+            obj->settings[i] = setting;
         }
     }
 
-    for (size_t i = 0; settings[i] != NULL; i++) {
-        free(settings[i]);
-    }
-    free(settings);
+    json_free_double_char_array(settings);
     return obj;
 }
 
@@ -299,26 +340,6 @@ char* json_get_file_content(int fd) {
     munmap(raw_ptr, raw_len);
 
     return file_content;
-}
-
-/**
- * Frees a single setting from memory
- * @param setting Setting object to free
- */
-void json_free_setting(json_setting_t *setting) {
-    if (setting == NULL) {
-        return;
-    }
-
-    free(setting->name);
-
-    if (setting->type == String) {
-        free(setting->string_type);
-    } else if (setting->type == Object && setting->obj_type != NULL) {
-        json_free(setting->obj_type);
-    }
-
-    free(setting);
 }
 
 /**
