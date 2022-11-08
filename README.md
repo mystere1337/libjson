@@ -144,8 +144,7 @@ Trying to add a setting to a non-existing object will return a fail (0) and the 
 To change a string setting at runtime use `json_set_string()`
 
 ```c
-int status = json_set_string(json, "string", '.', "test");
-if (status == 0) {
+if (json_set_string(json, "string", '.', "test") == 0) {
     printf("error: failed to set string\n");
 }
 ```
@@ -229,10 +228,10 @@ int main() {
     int some_bool = json_get_bool(json, "obj#some_bool", '#');
     
     /* Get floating point number setting in an object named 'abc.xyz' */
-    long double some_float = json_get_string(json, "abc.xyz#some_float", '#');
+    long double some_float = json_get_floating(json, "abc.xyz#some_float", '#');
     
     /* Get object setting inside of root object */
-    json_obj_t* obj = json_get_string(json, "some_obj", '.');
+    json_obj_t* obj = json_get_object(json, "some_obj", '.');
     
     /* Sets the 'some_str' setting to string value 'test' */
     if (json_set_string(json, "some_str", '.', "test") == 0) {
