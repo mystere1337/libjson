@@ -52,7 +52,7 @@ size_t json_get_file_size(int fd) {
  * @param c Character to check
  * @return Boolean value
  */
-int json_is_invisible(const char c) {
+int json_is_whitespace(const char c) {
     return c == ' ' || c == '\t' || c == '\v' || c == '\r' || c == '\n' || c == '\f';
 }
 
@@ -68,7 +68,7 @@ size_t json_count_invisible_characters(const char* str) {
         if (str[i] == '\"' && (i == 0 ? 1 : str[i - 1] != '\\')) {
             quotes++;
         }
-        if (json_is_invisible(str[i]) && !(quotes % 2)) {
+        if (json_is_whitespace(str[i]) && !(quotes % 2)) {
             spaces++;
         }
     }
@@ -221,7 +221,7 @@ char* json_align(const char* str) {
     int quotes = 0;
     for (int i = 0; str[i] != '\0'; i++) {
         if (str[i] == '\"' && (i == 0 ? 1 : str[i - 1] != '\\')) { quotes++; }
-        if (json_is_invisible(str[i]) && !(quotes % 2)) { continue; }
+        if (json_is_whitespace(str[i]) && !(quotes % 2)) { continue; }
         aligned[j] = str[i];
         j++;
     }
@@ -280,6 +280,25 @@ char** json_get_string_settings(const char *str) {
     return setting_strings;
 }
 
+//todo: ERROR_HANDLING differentiate exception from no string
+char* json_lex_string(const char* str) {
+    if (str[0] != '"') {
+        return NULL;
+    }
+
+    for (size_t pos = 1; str[pos] != '\0'; pos++) {
+        if (str[pos] == '"' && str[pos - 1] != '\\') {
+            char* content = malloc(pos, 1);
+
+            strncpy(content, &str[1], pos - 1);
+            content[pos] = '\0';
+            return content;
+        }
+    }
+
+    return NULL;
+}
+
 /**
  * Converts a serialized JSON string to an object.
  * @param obj pointer to JSON object
@@ -287,43 +306,19 @@ char** json_get_string_settings(const char *str) {
  * @return -1 if unsuccessful, 0 if successful
  */
 json_obj_t* json_from_string(const char* str) {
-    char** settings = json_get_string_settings(str);
+    for (size_t pos = 0; str[pos] != '\0'; pos++) {
+        if (json_lex_string(&str[pos])) {
 
-    if (settings == NULL) {
-        return NULL;
-    }
-
-    json_obj_t* obj = malloc(sizeof(json_obj_t));
-
-    obj->settings = NULL;
-    obj->settings_count = (size_t)0;
-
-    for (int i = 0; settings[i] != NULL; i++) {
-        obj->settings_count++;
-    }
-
-    if (obj->settings_count) {
-        obj->settings = calloc(sizeof(json_setting_t) * obj->settings_count, sizeof(json_setting_t*));
-
-        for (size_t i = 0; i < obj->settings_count; i++) {
-            json_setting_t* setting = parse_setting_line(settings[i]);
-
-            if (setting == NULL) {
-                for (size_t j = 0; j < obj->settings_count; j++) {
-                    json_free_setting(obj->settings[j]);
-                }
-                free(obj->settings);
-                free(obj);
-
-                json_free_double_char_array(settings);
-                return NULL;
-            }
-            obj->settings[i] = setting;
+        } else {
+            // error happened or wasn't a string
         }
-    }
+        if (json_is_whitespace(str[pos])) {
+            goto next;
+        }
 
-    json_free_double_char_array(settings);
-    return obj;
+        next:
+        pos++;
+    }
 }
 
 /**
@@ -440,7 +435,7 @@ char* json_format(const char* str) {
             count += 2;
             continue;
         }
-        if (json_is_invisible(str[i]) && !(quotes % 2)) {
+        if (json_is_whitespace(str[i]) && !(quotes % 2)) {
             continue;
         }
         count++;
@@ -491,7 +486,7 @@ char* json_format(const char* str) {
             ret[j] = '\n'; j++;
             continue;
         }
-        if (json_is_invisible(str[i]) && !(quotes % 2)) {
+        if (json_is_whitespace(str[i]) && !(quotes % 2)) {
             continue;
         }
         ret[j] = str[i]; j++;
