@@ -7,6 +7,523 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <ctype.h>
+
+TAILQ_HEAD(json_tailhead_s, json_token_s) json_head;
+
+/**
+ * Creates a json string, check length to avoid unexpected behavior
+ * @param src Source to copy string from
+ * @param len Length of the string to copy
+ * @return
+ */
+json_string_t* json_create_string(const char* src, size_t len) {
+    json_string_t* str = malloc(sizeof(json_string_t));
+
+    str->len = len;
+    str->value = malloc(len);
+    strncpy(str->value, src, len);
+}
+
+/**
+ * Checks if current character is whitespace
+ * @param c Character to check
+ * @return 1 if current character is whitespace, 0 otherwise
+ */
+int json_symbol_is_whitespace(const char c) {
+    return c == ' ' || c == '\t' || c == '\v' || c == '\r' || c == '\n' || c == '\f';
+}
+
+/**
+ * Checks if current character is a json syntax character
+ * @param c Character to check
+ * @return 1 if current character is part of JSON syntax, 0 otherwise
+ */
+int json_symbol_is_syntax(const char c) {
+    return c == ':' || c == ',' || c == '[' || c == ']' || c == '{' || c == '}';
+}
+
+/**
+ * Check if symbol is string
+ * @param str Lexer cursor
+ * @return 1 if symbol is string, 0 otherwise
+ */
+int json_symbol_is_string(const char* str) {
+    if (str[0] != '"') {
+        return 0;
+    }
+
+    for (size_t pos = 1; str[pos] != '\0'; pos++) {
+        if (str[pos] == '"' && str[pos - 1] != '\\') {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * Check if symbol is 'null'
+ * @param str Lexer cursor
+ * @return 1 if symbol is null, 0 otherwise
+ */
+int json_symbol_is_null(const char* str) {
+    return strlen(str) >= 4 && strncmp(str, "null", 4) == 0;
+}
+
+/**
+ * Check if symbol is a number
+ * @param str Lexer cursor
+ * @return 1 if symbol is a number, 0 otherwise
+ */
+int json_symbol_is_number(const char* str) {
+    char prev = '\0';
+    int exponent = 0;
+    int dot = 0;
+
+    for (size_t pos = 0; str[pos] != '\0'; pos++) {
+        if (isdigit(str[pos])) {
+            prev = str[pos];
+            continue;
+        }
+        if (str[pos] == '+' && prev == 'e') {
+            prev = '+';
+            continue;
+        }
+        if (str[pos] == '-' && (pos == 0 || prev == 'e')) {
+            prev = '-';
+            continue;
+        }
+        if ((str[pos] == 'e' || str[pos] == 'E') && isdigit(prev) && exponent == 0) {
+            prev = 'e';
+            exponent = 1; // There can only be one exponent
+            dot = 1; // Set dot to 1 since there can't be any dot after the exponent
+            continue;
+        }
+        if (str[pos] == '.' && isdigit(prev) && dot == 0) {
+            prev = '.';
+            dot = 1; // There can only be one dot
+            continue;
+        }
+        if (json_symbol_is_whitespace(str[pos]) && pos != 0) {
+            continue;
+        }
+        if (json_symbol_is_syntax(str[pos])) {
+            if (!isdigit(prev)) {
+                return 0;
+            }
+
+            return 1;
+        }
+
+        return 0;
+    }
+
+    return 0;
+}
+
+/**
+ * Check if symbol is bool
+ * @param str Lexer cursor
+ * @return 1 if symbol is a bool, 0 otherwise
+ */
+int json_symbol_is_bool(const char* str) {
+    return strlen(str) >= 4 && strncmp(str, "true", 4) == 0 || strncmp(str, "false", 5) == 0;
+}
+
+/**
+ * Tokenize symbol at position, must check if symbol is string before
+ * @param str Lexer cursor
+ * @return Tokenized string symbol
+ */
+json_token_t* json_lex_string(const char* str) {
+    json_token_t* token = malloc(sizeof(json_token_t));
+
+    for (size_t pos = 1; str[pos] != '\0'; pos++) {
+        if (str[pos] == '"' && str[pos - 1] != '\\') {
+            token->string = json_create_string(&str[1], pos - 1);
+            token->type = JSON_TOKEN_STRING;
+            return token;
+        }
+    }
+
+    return token;
+}
+
+/**
+ * Tokenize symbol at position, must check if symbol is JSON syntax symbol before
+ * @param str Lexer cursor
+ * @return Tokenized syntax symbol
+ */
+json_token_t* json_lex_syntax(const char* str) {
+    json_token_t* token = malloc(sizeof(json_token_t));
+
+    token->string = json_create_string(str, 1);
+    token->type = JSON_TOKEN_SYNTAX;
+    return token;
+}
+
+/**
+ * Tokenize symbol at position, must check if symbol is number before using json_symbol_is_number
+ * @param str Lexer cursor
+ * @return Tokenized number symbol
+ */
+json_token_t* json_lex_number(const char* str) {
+    json_token_t* token = malloc(sizeof(json_token_t));
+
+    for (size_t pos = 0; str[pos] != '\0'; pos++) {
+        if (json_symbol_is_syntax(str[pos]) || json_symbol_is_whitespace(str[pos])) {
+            token->string = json_create_string(str, pos);
+            token->type = JSON_TOKEN_NUMBER;
+            return token;
+        }
+    }
+
+    return token;
+}
+
+/**
+ * Tokenize symbol at position, must check if symbol is boolean before
+ * @param str Lexer cursor
+ * @return Tokenized bool symbol
+ */
+json_token_t* json_lex_bool(const char* str) {
+    json_token_t* token = malloc(sizeof(json_token_t));
+
+    token->string = json_create_string(str, strncmp(str, "true", 4) == 0 ? 4 : 5);
+    token->type = JSON_TOKEN_BOOL;
+    return token;
+}
+
+/**
+ * Tokenize symbol at position, must check if symbol is null     before
+ * @param str Lexer cursor
+ * @return Tokenized null symbol
+ */
+json_token_t* json_lex_null(const char* str) {
+    json_token_t* token = malloc(sizeof(json_token_t));
+
+    token->string = json_create_string(str, 4);
+    token->type = JSON_TOKEN_NULL;
+    return token;
+}
+
+/**
+ * Initializes an object to be populated
+ * @return Empty object
+ */
+json_obj_t* json_init_obj() {
+    json_obj_t* obj = malloc(sizeof(json_obj_t));
+
+    obj->settings = malloc(0);
+    obj->settings_count = 0;
+    return obj;
+}
+
+/**
+ * Initializes an array to be populated
+ * @return Empty array
+ */
+json_array_t* json_init_array() {
+    json_array_t* arr = malloc(sizeof(json_array_t));
+
+    arr->values = malloc(0);
+    arr->values_count = 0;
+    return arr;
+}
+
+/**
+ * Frees a JSON string type
+ * @param string The string to be freed
+ */
+void json_free_string(json_string_t* string) {
+    free(string->value);
+    free(string);
+}
+
+/**
+ * Frees a lexer token
+ * @param token JSON lexer token
+ */
+void json_free_token(json_token_t* token) {
+    json_free_string(token->string);
+    free(token);
+}
+
+/**
+ * Frees an JSON array
+ * @param array JSON array
+ */
+void json_free_array(json_array_t* array) {
+    for (size_t i = 0; i < array->values_count; i++) {
+        json_free_value(array->values[i]);
+    }
+}
+
+/**
+ * Frees a JSON string
+ * @param value JSON string
+ */
+void json_free_value(json_value_t* value) {
+    if (value->type == JSON_VALUE_STR) {
+        free(value->string_type);
+    }
+    if (value->type == JSON_VALUE_OBJ) {
+        json_free_object(value->obj_type);
+    }
+    if (value->type == JSON_VALUE_ARR) {
+        json_free_array(value->array_type);
+    }
+}
+
+/**
+ * Frees a JSON setting
+ * @param setting JSON setting
+ */
+void json_free_setting(json_setting_t* setting) {
+    free(setting->name);
+    json_free_value(setting->value);
+}
+
+/**
+ * Frees a JSON object
+ * @param obj JSON object
+ */
+void json_free_object(json_obj_t* obj) {
+    for (size_t i = 0; i < obj->settings_count; i++) {
+        json_free_setting(obj->settings[i]);
+    }
+
+    free(obj->settings);
+}
+
+/**
+ * Adds the provided setting to the provided object
+ * @param obj JSON object to add setting to
+ * @param setting JSON setting to add to the object
+ * @return 1 on success, 0 on failure
+ */
+int json_add_obj_setting(json_obj_t* obj, json_setting_t* setting) {
+    json_setting_t** tmp = realloc(obj->settings, sizeof(json_setting_t*) * (obj->settings_count + 1));
+
+    if (!tmp) {
+        // error: something went wrong trying to reallocate
+        return 0;
+    }
+
+    obj->settings_count += 1;
+    obj->settings = tmp;
+
+    obj->settings[obj->settings_count - 1] = setting;
+
+    return 1;
+}
+
+/**
+ * Clears the list of lexed tokens
+ */
+void json_lexer_clear_list() {
+    json_token_t* current;
+
+    while ((current = TAILQ_FIRST(&json_head))) {
+        TAILQ_REMOVE(&json_head, current, next);
+        json_free_token(current);
+    }
+}
+
+/**
+ * Removes the first object of the Lexer queue
+ */
+void json_lexer_remove_first() {
+    json_token_t* first = TAILQ_FIRST(&json_head);
+
+    TAILQ_REMOVE(&json_head, first, next);
+    json_free_token(first);
+}
+
+json_value_t* json_parse_value(json_token_t* token) {
+    json_value_t* value = malloc(sizeof(json_value_t));
+}
+
+json_setting_t* json_parse_setting(json_token_t* first) {
+    json_setting_t* setting = malloc(sizeof(json_setting_t));
+
+    if (first->type != JSON_TOKEN_STRING) {
+        // error: expected a string (setting key must be a string)
+        json_free_setting(setting);
+        return NULL;
+    }
+
+    setting->name = malloc(sizeof(json_string_t));
+    setting->name->len = first->string->len;
+    strncpy(setting->name->value, first->string->value, first->string->len);
+
+    json_lexer_remove_first();
+    first = TAILQ_FIRST(&json_head);
+
+    if (first->type != JSON_TOKEN_SYNTAX || strncmp(first->string->value, ":", 1) != 0) {
+        // error: expected a colon
+        json_free_setting(setting);
+        return NULL;
+    }
+
+    json_lexer_remove_first();
+    first = TAILQ_FIRST(&json_head);
+
+    json_value_t* value = json_parse_value(first);
+
+    if (value == NULL) {
+        // error: setting parsing didn't succeeded
+        json_free_setting(setting);
+        return NULL;
+    }
+
+    setting->value = value;
+
+    json_lexer_remove_first();
+    first = TAILQ_FIRST(&json_head);
+
+    return setting;
+}
+
+json_obj_t* json_parse_object(json_token_t* first) {
+    json_obj_t* obj = json_init_obj();
+
+    if (first->type == JSON_TOKEN_SYNTAX) {
+        if (strncmp(first->string->value, "}", 1) == 0) {
+            json_lexer_remove_first();
+            return obj; // valid but empty
+        }
+    }
+
+    for (; first != NULL; first = TAILQ_FIRST(&json_head)) {
+        json_setting_t* setting = json_parse_setting(first);
+
+        if (setting == NULL) {
+            // error: expected a valid setting (got an unexpected token)
+            json_free_object(obj);
+            return NULL;
+        }
+
+        if (!json_add_obj_setting(obj, setting)) {
+            // error: something went wrong trying to add setting to the object
+            json_free_object(obj);
+            return NULL;
+        }
+
+        first = TAILQ_FIRST(&json_head);
+
+        if (first->type == JSON_TOKEN_SYNTAX && strncmp(first->string->value, "}", 1) == 0) {
+            json_lexer_remove_first();
+            return obj;
+        } else if (first->type != JSON_TOKEN_SYNTAX || strncmp(first->string->value, ",", 1) != 0) {
+            // error: expected a comma after a setting
+            json_free_object(obj);
+            return NULL;
+        }
+
+        json_lexer_remove_first();
+    }
+
+    // error: expected end of object bracket
+    json_free_object(obj);
+    return NULL;
+}
+
+json_array_t* json_parse_array(json_token_t* elem) {
+    json_array_t* arr = json_init_array();
+
+    if (elem->type == JSON_TOKEN_SYNTAX) {
+        if (strncmp(elem->string->value, "]", 1) == 0) {
+            return arr;
+        }
+    }
+
+    return arr;
+}
+
+json_container_t* json_parse_container(json_token_t* elem) {
+    json_container_t* container;
+
+    if (elem->type == JSON_TOKEN_SYNTAX) {
+        if (strncmp(elem->string->value, "{", 1) == 0) {
+            json_lexer_remove_first();
+            container->type = JSON_CONTAINER_OBJ;
+            container->obj = json_parse_object(TAILQ_FIRST(&json_head));
+            return container->obj == NULL ? NULL : container;
+        } else if (strncmp(elem->string->value, "[", 1) == 0) {
+            json_lexer_remove_first();
+            container->type = JSON_CONTAINER_ARRAY;
+            container->array = json_parse_array(TAILQ_FIRST(&json_head));
+            return container->array == NULL ? NULL : container;
+        }
+    }
+
+    // error: invalid container (container must be either an object or an array)
+    return NULL;
+}
+
+/**
+ * Converts a serialized JSON string to an object.
+ * @param obj pointer to JSON object
+ * @param str JSON string
+ * @return -1 if unsuccessful, 0 if successful
+ */
+json_container_t* json_from_string(const char* str) {
+    json_token_t* tok;
+    TAILQ_INIT(&json_head);
+
+    for (size_t pos = 0; str[pos] != '\0';) {
+        if (json_symbol_is_string(&str[pos])) {
+            tok = json_lex_string(&str[pos]);
+
+            TAILQ_INSERT_TAIL(&json_head, tok, next);
+            pos += tok->string->len + 2;
+            continue;
+        }
+        if (json_symbol_is_number(&str[pos])) {
+            tok = json_lex_number(&str[pos]);
+
+            TAILQ_INSERT_TAIL(&json_head, tok, next);
+            pos += tok->string->len;
+            continue;
+        }
+        if (json_symbol_is_bool(&str[pos])) {
+            tok = json_lex_bool(&str[pos]);
+
+            TAILQ_INSERT_TAIL(&json_head, tok, next);
+            pos += tok->string->len;
+            continue;
+        }
+        if (json_symbol_is_null(&str[pos])) {
+            tok = json_lex_null(&str[pos]);
+
+            TAILQ_INSERT_TAIL(&json_head, tok, next);
+            pos += 4;
+            continue;
+        }
+        if (json_symbol_is_syntax(str[pos])) {
+            tok = json_lex_syntax(&str[pos]);
+
+            TAILQ_INSERT_TAIL(&json_head, tok, next);
+            pos += 1;
+            continue;
+        }
+        if (json_symbol_is_whitespace(str[pos])) {
+            pos += 1;
+            continue;
+        }
+
+        // error: unknown symbol
+        json_lexer_clear_list();
+        return NULL;
+    }
+
+    json_container_t* root = json_parse_container(TAILQ_FIRST(&json_head));
+
+    json_lexer_clear_list();
+    return root;
+}
 
 /**
  * Get key count in key_array
@@ -48,17 +565,8 @@ size_t json_get_file_size(int fd) {
 }
 
 /**
- * Checks if current character is transparent
- * @param c Character to check
- * @return Boolean value
- */
-int json_is_whitespace(const char c) {
-    return c == ' ' || c == '\t' || c == '\v' || c == '\r' || c == '\n' || c == '\f';
-}
-
-/**
  * Counts number of invisible characters in string
- * @param str String pointer
+ * @param str JSON_VALUE_STR pointer
  * @return Number of invisible characters in string
  */
 size_t json_count_invisible_characters(const char* str) {
@@ -68,257 +576,12 @@ size_t json_count_invisible_characters(const char* str) {
         if (str[i] == '\"' && (i == 0 ? 1 : str[i - 1] != '\\')) {
             quotes++;
         }
-        if (json_is_whitespace(str[i]) && !(quotes % 2)) {
+        if (json_symbol_is_whitespace(str[i]) && !(quotes % 2)) {
             spaces++;
         }
     }
 
     return spaces;
-}
-
-/**
- * Get contents of an object between first and last braces
- * @param str Serialized JSON object
- * @return Content of object (without containing braces)
- */
-char* json_isolate_content(const char *str) {
-    size_t len = strlen(str);
-    char* dest = malloc(len - 1);
-
-    dest[len - 2] = '\0';
-    strncpy(dest, str + 1, len - 2);
-
-    return dest;
-}
-
-/**
- * Gets number of settings in isolated JSON object
- * @param str Isolated json object
- * @return Number of settings in string
- */
-size_t json_count_isolated_settings(const char *str) {
-    size_t count = 1;
-
-    int quotes = 0;
-    int braces = 0;
-    for (int i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '\"' && (i == 0 ? 1 : str[i - 1] != '\\')) { quotes++; }
-        if (str[i] == '{' && !(quotes % 2)) { braces++; }
-        if (str[i] == '}' && !(quotes % 2)) { braces--; }
-        if (str[i] == ',' && !(quotes % 2) && !braces && str[i+1] == '"') {
-            count++;
-        }
-    }
-
-    return count;
-}
-
-/**
- * Frees a single setting from memory
- * @param setting Setting object to free
- */
-void json_free_setting(json_setting_t *setting) {
-    if (setting == NULL) {
-        return;
-    }
-
-    free(setting->name);
-
-    if (setting->type == String) {
-        free(setting->string_type);
-    } else if (setting->type == Object && setting->obj_type != NULL) {
-        json_free(setting->obj_type);
-    }
-
-    free(setting);
-}
-
-/**
- * Deserializes unique json setting
- * @param string Serialized setting of type "key":"value"
- * @return -1 on error, 0 on success
- */
-json_setting_t* parse_setting_line(const char *string) {
-    json_setting_t* set = malloc(sizeof(json_setting_t));
-    size_t len = strlen(string);
-    char* str_value;
-
-    int found = 0;
-    int quotes = 0;
-    int mallocced = 0;
-    size_t colon = 0;
-    for (size_t i = 0; i < len; i++) {
-        if (string[i] == '\"' && (i == 0 ? 1 : string[i - 1] != '\\')) { quotes++; }
-        if (string[i] == ',' && i == len - 1) {
-            if (mallocced == 1) {
-                free(set->name);
-            }
-            free(set);
-            return NULL;
-        }
-        if (string[i] == ':' && !(quotes % 2) && !found && string[i - 1] == '\"') {
-            found = 1;
-            colon = i;
-            set->name = malloc(i - 1);
-            mallocced = 1;
-            set->name[i - 2] = '\0';
-            strncpy(set->name, &string[1], i - 2);
-        }
-        if (i == len - 1) {
-            str_value = malloc(i - colon + 1);
-            str_value[i - colon] = '\0';
-            strncpy(str_value, &string[colon + 1], i - colon);
-            break;
-        }
-    }
-
-    if (str_value[0] == '\"') {
-        size_t len2 = strlen(str_value);
-        set->type = String;
-        set->string_type = malloc(len2 - 1);
-        set->string_type[len2 - 2] = '\0';
-        strncpy(set->string_type, &str_value[1], len2 - 2);
-    } else if (str_value[0] == 't' || str_value[0] == 'f') {
-        set->type = Boolean;
-        set->bool_type = strcmp(str_value, "true") == 0 ? 1 : 0;
-    } else if (str_value[0] == '-' || (str_value[0] >= '0' && str_value[0] <= '9')) {
-        if (strchr(str_value, '.')) {
-            set->type = Floating;
-            set->double_type = strtod(str_value, NULL);
-        } else {
-            set->type = Integer;
-            set->long_type = strtoll(str_value, NULL, 10);
-        }
-    } else if (str_value[0] == '{') {
-        set->type = Object;
-        set->obj_type = json_from_string(str_value);
-    } else if (str_value[0] == 'n') {
-        set->type = Object;
-        set->obj_type = NULL;
-    } else {
-        free(set->name);
-        free(set);
-        free(str_value);
-        return NULL;
-    }
-
-    free(str_value);
-    return set;
-}
-
-/**
- * Clears invisible characters in string for further processing
- * @param str Pointer to string to clear
- * @return Cleared string pointer
- */
-char* json_align(const char* str) {
-    size_t len = strlen(str);
-    size_t spaces = json_count_invisible_characters(str);
-    char *aligned = malloc(len - spaces + 1);
-    aligned[len - spaces] = '\0';
-
-    int j = 0;
-    int quotes = 0;
-    for (int i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '\"' && (i == 0 ? 1 : str[i - 1] != '\\')) { quotes++; }
-        if (json_is_whitespace(str[i]) && !(quotes % 2)) { continue; }
-        aligned[j] = str[i];
-        j++;
-    }
-
-    return aligned;
-}
-
-/**
- * Extracts strings from a serialized JSON object, each containing one setting of the object
- * @param str Serialized JSON string
- * @return Array of json setting names
- */
-char** json_get_string_settings(const char *str) {
-    char* aligned = json_align(str);
-    size_t len = strlen(aligned);
-
-    if (str[0] != '{' || str[len - 1] != '}') {
-        free(aligned);
-        return NULL;
-    }
-
-    char* isolated = json_isolate_content(aligned);
-    size_t setting_count = json_count_isolated_settings(isolated);
-
-    if (setting_count < 1 && len > 2) {
-        free(aligned);
-        free(isolated);
-        return NULL;
-    }
-
-    char** setting_strings = malloc(sizeof(char*) * (setting_count + 1));
-    setting_strings[setting_count] = NULL;
-
-    int quotes = 0;
-    int braces = 0;
-    size_t prev_pos = 0;
-    int str_index = 0;
-    for (size_t i = 0; isolated[i] != '\0'; i++) {
-        if (isolated[i] == '\"' && (i == 0 ? 1 : isolated[i - 1] != '\\')) { quotes++; }
-        if (isolated[i] == '{' && !(quotes % 2)) { braces++; }
-        if (isolated[i] == '}' && !(quotes % 2)) { braces--; }
-        if ((isolated[i] == ',' && !(quotes % 2) && !braces) || i == len - 3) {
-            int offset = i == len - 3 ? 2 : 1;
-
-            setting_strings[str_index] = malloc(i - prev_pos + offset);
-            setting_strings[str_index][i - prev_pos + offset - 1] = '\0';
-            strncpy(setting_strings[str_index], &isolated[prev_pos], i == len - 3 ? i + 1 - prev_pos : i - prev_pos);
-
-            str_index++;
-            prev_pos = i + 1;
-        }
-    }
-
-    free(aligned);
-    free(isolated);
-    return setting_strings;
-}
-
-//todo: ERROR_HANDLING differentiate exception from no string
-char* json_lex_string(const char* str) {
-    if (str[0] != '"') {
-        return NULL;
-    }
-
-    for (size_t pos = 1; str[pos] != '\0'; pos++) {
-        if (str[pos] == '"' && str[pos - 1] != '\\') {
-            char* content = malloc(pos, 1);
-
-            strncpy(content, &str[1], pos - 1);
-            content[pos] = '\0';
-            return content;
-        }
-    }
-
-    return NULL;
-}
-
-/**
- * Converts a serialized JSON string to an object.
- * @param obj pointer to JSON object
- * @param str JSON string
- * @return -1 if unsuccessful, 0 if successful
- */
-json_obj_t* json_from_string(const char* str) {
-    for (size_t pos = 0; str[pos] != '\0'; pos++) {
-        if (json_lex_string(&str[pos])) {
-
-        } else {
-            // error happened or wasn't a string
-        }
-        if (json_is_whitespace(str[pos])) {
-            goto next;
-        }
-
-        next:
-        pos++;
-    }
 }
 
 /**
@@ -356,7 +619,7 @@ void json_free(json_obj_t* obj) {
  * @param path path to the config file.
  * @return -1 on error, 0 on success
  */
-json_obj_t* json_from_file(const char *path) {
+json_container_t* json_from_file(const char *path) {
     int fd = open(path, O_RDWR | O_CREAT | O_APPEND, 0600);
 
     if (fd == -1) {
@@ -368,17 +631,17 @@ json_obj_t* json_from_file(const char *path) {
     }
 
     char* file_content = json_get_file_content(fd);
-    json_obj_t* obj = json_from_string(file_content);
+    json_container_t* root = json_from_string(file_content);
 
     free(file_content);
     close(fd);
-    return obj;
+    return root;
 }
 
 /**
  * Concatenates two strings together
- * @param dest String to concat with
- * @param src String to concat on top of dest
+ * @param dest JSON_VALUE_STR to concat with
+ * @param src JSON_VALUE_STR to concat on top of dest
  * @return Concatenated string
  */
 char* json_strcat(char* dest, const char* src) {
@@ -435,7 +698,7 @@ char* json_format(const char* str) {
             count += 2;
             continue;
         }
-        if (json_is_whitespace(str[i]) && !(quotes % 2)) {
+        if (json_symbol_is_whitespace(str[i]) && !(quotes % 2)) {
             continue;
         }
         count++;
@@ -486,7 +749,7 @@ char* json_format(const char* str) {
             ret[j] = '\n'; j++;
             continue;
         }
-        if (json_is_whitespace(str[i]) && !(quotes % 2)) {
+        if (json_symbol_is_whitespace(str[i]) && !(quotes % 2)) {
             continue;
         }
         ret[j] = str[i]; j++;
@@ -514,7 +777,7 @@ char* json_dump(json_obj_t* obj, int format) {
         free(tmp);
 
         switch (obj->settings[i]->type) {
-            case Boolean: {
+            case JSON_VALUE_BOOL: {
                 needed = snprintf(NULL, 0, "%s%s", obj->settings[i]->bool_type ? "true" : "false", i == obj->settings_count - 1 ? "" : ",") + 1;
                 tmp = malloc(needed);
                 sprintf(tmp, "%s%s", obj->settings[i]->bool_type ? "true" : "false", i == obj->settings_count - 1 ? "" : ",");
@@ -522,7 +785,7 @@ char* json_dump(json_obj_t* obj, int format) {
                 free(tmp);
                 break;
             }
-            case Integer: {
+            case JSON_VALUE_INT: {
                 needed = snprintf(NULL, 0, "%lld%s", obj->settings[i]->long_type, i == obj->settings_count - 1 ? "" : ",") + 1;
                 tmp = malloc(needed);
                 sprintf(tmp, "%lld%s", obj->settings[i]->long_type, i == obj->settings_count - 1 ? "" : ",");
@@ -530,7 +793,7 @@ char* json_dump(json_obj_t* obj, int format) {
                 free(tmp);
                 break;
             }
-            case Floating: {
+            case JSON_VALUE_FLOAT: {
                 needed = snprintf(NULL, 0, "%Lf%s", obj->settings[i]->double_type, i == obj->settings_count - 1 ? "" : ",") + 1;
                 tmp = malloc(needed);
                 sprintf(tmp, "%Lf%s", obj->settings[i]->double_type, i == obj->settings_count - 1 ? "" : ",");
@@ -538,7 +801,7 @@ char* json_dump(json_obj_t* obj, int format) {
                 free(tmp);
                 break;
             }
-            case String: {
+            case JSON_VALUE_STR: {
                 needed = snprintf(NULL, 0, "\"%s\"%s", obj->settings[i]->string_type, i == obj->settings_count - 1 ? "" : ",") + 1;
                 tmp = malloc(needed);
                 sprintf(tmp, "\"%s\"%s", obj->settings[i]->string_type, i == obj->settings_count - 1 ? "" : ",");
@@ -546,7 +809,7 @@ char* json_dump(json_obj_t* obj, int format) {
                 free(tmp);
                 break;
             }
-            case Object: {
+            case JSON_VALUE_OBJ: {
                 if (obj->settings[i]->obj_type == NULL) {
                     needed = snprintf(NULL, 0, "null%s", i == obj->settings_count - 1 ? "" : ",") + 1;
                     tmp = malloc(needed);
@@ -581,8 +844,8 @@ char* json_dump(json_obj_t* obj, int format) {
 
 /**
  * Prints a JSON object on the standard output. Memory handled
- * @param obj Object to print
- * @param format Boolean; Format the output (1) or no (0)?
+ * @param obj JSON_VALUE_OBJ to print
+ * @param format JSON_VALUE_BOOL; Format the output (1) or no (0)?
  */
 void json_print(json_obj_t* obj, int format) {
     char* dump = json_dump(obj, format);
@@ -593,7 +856,7 @@ void json_print(json_obj_t* obj, int format) {
 
 /**
  * Writes a JSON object to disk
- * @param json Object to save
+ * @param json JSON_VALUE_OBJ to save
  * @param path Path to file that will contain the object
  * @return 0 on error, 1 on success.
  */
@@ -673,7 +936,7 @@ char** json_get_key_array(const char* str, const char separator) {
 
 /**
  * Get first corresponding string setting
- * @param obj Object to search
+ * @param obj JSON_VALUE_OBJ to search
  * @param key_array Key array
  * @return Corresponding setting or NULL if not found
  */
@@ -686,7 +949,7 @@ json_setting_t* json_get_setting(json_obj_t* obj, char** key_array, int remove) 
 
     for (size_t i = 0; i < obj->settings_count; i++) {
         if (strcmp(obj->settings[i]->name, key_array[0]) == 0) {
-            if (obj->settings[i]->type == Object && key_count - 1 != 0) {
+            if (obj->settings[i]->type == JSON_VALUE_OBJ && key_count - 1 != 0) {
                 return json_get_setting(obj->settings[i]->obj_type, &key_array[1], remove);
             } else {
                 json_setting_t* ret = obj->settings[i];
@@ -718,7 +981,7 @@ json_setting_t* json_get_setting(json_obj_t* obj, char** key_array, int remove) 
 
 /**
  * Get corresponding string setting
- * @param obj Object to search
+ * @param obj JSON_VALUE_OBJ to search
  * @param str Key array like (ex: "object.setting")
  * @param separator Char separator separating the keys in the string
  * @return Corresponding setting or NULL if error happens
@@ -729,7 +992,7 @@ char* json_get_string(json_obj_t* obj, const char* str, char separator) {
 
     json_free_double_char_array(key_array);
 
-    if (setting == NULL || setting->type != String) {
+    if (setting == NULL || setting->type != JSON_VALUE_STR) {
         printf("error: can't find %s, or it isn't a string\n", str);
         return NULL;
     }
@@ -739,10 +1002,10 @@ char* json_get_string(json_obj_t* obj, const char* str, char separator) {
 
 /**
  * Get corresponding boolean setting
- * @param obj Object to search
+ * @param obj JSON_VALUE_OBJ to search
  * @param str Key array like (ex: "object.setting")
  * @param separator Char separator separating the keys in the string (ex: '.')
- * @return Correct boolean value or 0 if nothing is found
+ * @return Correct boolean values or 0 if nothing is found
  */
 int json_get_bool(json_obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
@@ -750,7 +1013,7 @@ int json_get_bool(json_obj_t* obj, const char* str, char separator) {
 
     json_free_double_char_array(key_array);
 
-    if (setting == NULL || setting->type != Boolean) {
+    if (setting == NULL || setting->type != JSON_VALUE_BOOL) {
         printf("error: can't find %s, or it isn't a bool\n", str);
         return 0;
     }
@@ -760,7 +1023,7 @@ int json_get_bool(json_obj_t* obj, const char* str, char separator) {
 
 /**
  * Get corresponding integer setting
- * @param obj Object to search
+ * @param obj JSON_VALUE_OBJ to search
  * @param str Key array like (ex: "object.setting")
  * @param separator Char separator separating the keys in the string (ex: '.')
  * @return Corresponding setting or 0 if error happens
@@ -771,7 +1034,7 @@ long long json_get_integer(json_obj_t* obj, const char* str, char separator) {
 
     json_free_double_char_array(key_array);
 
-    if (setting == NULL || setting->type != Integer) {
+    if (setting == NULL || setting->type != JSON_VALUE_INT) {
         printf("error: can't find %s, or it isn't an integer\n", str);
         return 0;
     }
@@ -781,7 +1044,7 @@ long long json_get_integer(json_obj_t* obj, const char* str, char separator) {
 
 /**
  * Get corresponding object setting
- * @param obj Object to search
+ * @param obj JSON_VALUE_OBJ to search
  * @param str Key array like (ex: "object.setting")
  * @param separator Char separator separating the keys in the string (ex: '.')
  * @return Corresponding setting or NULL if error happens
@@ -792,7 +1055,7 @@ json_obj_t* json_get_object(json_obj_t* obj, const char* str, char separator) {
 
     json_free_double_char_array(key_array);
 
-    if (setting == NULL || setting->type != Object) {
+    if (setting == NULL || setting->type != JSON_VALUE_OBJ) {
         printf("error: can't find %s, or it isn't an object\n", str);
         return NULL;
     }
@@ -802,10 +1065,10 @@ json_obj_t* json_get_object(json_obj_t* obj, const char* str, char separator) {
 
 /**
  * Get corresponding floating point number setting
- * @param obj Object to search
+ * @param obj JSON_VALUE_OBJ to search
  * @param str Key array like (ex: "object.setting")
  * @param separator Char separator separating the keys in the string (ex: '.')
- * @return Corresponding value or 0 if error happens
+ * @return Corresponding values or 0 if error happens
  */
 long double json_get_floating(json_obj_t* obj, const char* str, char separator) {
     char** key_array = json_get_key_array(str, separator);
@@ -813,7 +1076,7 @@ long double json_get_floating(json_obj_t* obj, const char* str, char separator) 
 
     json_free_double_char_array(key_array);
 
-    if (setting == NULL || setting->type != Floating) {
+    if (setting == NULL || setting->type != JSON_VALUE_FLOAT) {
         printf("error: can't find %s, or it isn't a floating point number\n", str);
         return 0;
     }
@@ -823,7 +1086,7 @@ long double json_get_floating(json_obj_t* obj, const char* str, char separator) 
 
 /**
  * Removes a setting from an object at specified key
- * @param obj Object to search in
+ * @param obj JSON_VALUE_OBJ to search in
  * @param key Key to setting
  * @param separator Separator
  * @return 0 if obj is NULL, if setting doesn't exist, 1 on success
@@ -851,7 +1114,7 @@ int json_remove_setting(json_obj_t* obj, const char* key, char separator) {
 json_setting_t* json_create_string_setting(const char* name, const char* value) {
     json_setting_t* setting = malloc(sizeof(json_setting_t));
 
-    setting->type = String;
+    setting->type = JSON_VALUE_STR;
     setting->name = malloc(strlen(name) + 1);
     strcpy(setting->name, name);
     setting->string_type = malloc(strlen(value) + 1);
@@ -869,7 +1132,7 @@ json_setting_t* json_create_string_setting(const char* name, const char* value) 
 json_setting_t* json_create_bool_setting(const char* name, int value) {
     json_setting_t* setting = malloc(sizeof(json_setting_t));
 
-    setting->type = Boolean;
+    setting->type = JSON_VALUE_BOOL;
     setting->name = malloc(strlen(name) + 1);
     strcpy(setting->name, name);
     setting->bool_type = value;
@@ -886,7 +1149,7 @@ json_setting_t* json_create_bool_setting(const char* name, int value) {
 json_setting_t* json_create_integer_setting(const char* name, long long value) {
     json_setting_t* setting = malloc(sizeof(json_setting_t));
 
-    setting->type = Integer;
+    setting->type = JSON_VALUE_INT;
     setting->name = malloc(strlen(name) + 1);
     strcpy(setting->name, name);
     setting->long_type = value;
@@ -903,7 +1166,7 @@ json_setting_t* json_create_integer_setting(const char* name, long long value) {
 json_setting_t* json_create_floating_setting(const char* name, long double value) {
     json_setting_t* setting = malloc(sizeof(json_setting_t));
 
-    setting->type = Floating;
+    setting->type = JSON_VALUE_FLOAT;
     setting->name = malloc(strlen(name) + 1);
     strcpy(setting->name, name);
     setting->double_type = value;
@@ -920,7 +1183,7 @@ json_setting_t* json_create_floating_setting(const char* name, long double value
 json_setting_t* json_create_object_setting(const char* name, json_obj_t* value) {
     json_setting_t* setting = malloc(sizeof(json_setting_t));
 
-    setting->type = Object;
+    setting->type = JSON_VALUE_OBJ;
     setting->name = malloc(strlen(name) + 1);
     strcpy(setting->name, name);
     setting->obj_type = value;
@@ -929,9 +1192,9 @@ json_setting_t* json_create_object_setting(const char* name, json_obj_t* value) 
 }
 
 /**
- * Adds a setting to an object. If the object is already containing a setting with this name, it will
+ * Adds a setting to an object. If the object is already containing a setting with this string, it will
  * automatically be overwritten by the new one.
- * @param obj Object to which add the setting
+ * @param obj JSON_VALUE_OBJ to which add the setting
  * @param setting Setting to add to the object
  * @param key_array Array of keys containing the path
  * @return 0 on failure, 1 on success
@@ -946,7 +1209,7 @@ int json_add_setting(json_obj_t* obj, json_setting_t* setting, char** key_array,
 
     for (size_t i = 0; i < obj->settings_count; i++) {
         if (strcmp(obj->settings[i]->name, key_array[0]) == 0 && key_count > 1) {
-            if (obj->settings[i]->type == Object && key_count - 1 != 0) {
+            if (obj->settings[i]->type == JSON_VALUE_OBJ && key_count - 1 != 0) {
                 return json_add_setting(obj->settings[i]->obj_type, setting, &key_array[1], key_count - 1);
             }
         } else {
@@ -976,7 +1239,7 @@ int json_add_setting(json_obj_t* obj, json_setting_t* setting, char** key_array,
 
 /**
  * Sets a string setting at the desired key
- * @param obj Object in which set the setting
+ * @param obj JSON_VALUE_OBJ in which set the setting
  * @param key Key path at which set the setting (ex: object.object.setting)
  * @param separator Separator of keys in key path
  * @param value Value to set in the setting
@@ -995,7 +1258,7 @@ int json_set_string(json_obj_t* obj, const char* key, char separator, const char
 
 /**
  * Sets a boolean setting at the desired key
- * @param obj Object in which set the setting
+ * @param obj JSON_VALUE_OBJ in which set the setting
  * @param key Key path at which set the setting (ex: object.object.setting)
  * @param separator Separator of keys in key path
  * @param value Value to set in the setting
@@ -1013,7 +1276,7 @@ int json_set_bool(json_obj_t* obj, const char* key, char separator, int value) {
 
 /**
  * Sets a integer setting at the desired key
- * @param obj Object in which set the setting
+ * @param obj JSON_VALUE_OBJ in which set the setting
  * @param key Key path at which set the setting (ex: object.object.setting)
  * @param separator Separator of keys in key path
  * @param value Value to set in the setting
@@ -1031,7 +1294,7 @@ int json_set_integer(json_obj_t* obj, const char* key, char separator, long long
 
 /**
  * Sets a floating setting at the desired key
- * @param obj Object in which set the setting
+ * @param obj JSON_VALUE_OBJ in which set the setting
  * @param key Key path at which set the setting (ex: object.object.setting)
  * @param separator Separator of keys in key path
  * @param value Value to set in the setting
@@ -1049,7 +1312,7 @@ int json_set_floating(json_obj_t* obj, const char* key, char separator, long dou
 
 /**
  * Sets an object setting at the desired key
- * @param obj Object in which set the setting
+ * @param obj JSON_VALUE_OBJ in which set the setting
  * @param key Key path at which set the setting (ex: object.object.setting)
  * @param separator Separator of keys in key path
  * @param value Value to set in the setting
