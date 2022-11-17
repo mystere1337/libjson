@@ -748,10 +748,6 @@ json_container_t* json_from_string(const char* str) {
         return NULL;
     }
 
-    TAILQ_FOREACH(tok, &json_head, next) {
-        printf("%.*s\n", tok->string->len, tok->string->value);
-    }
-
     json_container_t* root = json_parse_container(TAILQ_FIRST(&json_head));
 
     json_lexer_clear_list();
