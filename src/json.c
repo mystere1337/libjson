@@ -276,7 +276,7 @@ void json_free_array(json_array_t* array) {
  */
 void json_free_value(json_value_t* value) {
     if (value->type == JSON_VALUE_STR) {
-        free(value->string_type);
+        json_free_string(value->string_type);
     }
     if (value->type == JSON_VALUE_OBJ) {
         json_free_object(value->obj_type);
