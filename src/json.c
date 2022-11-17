@@ -325,6 +325,28 @@ void json_free_container(json_container_t* con) {
 }
 
 /**
+ * Adds the provided value to the provided object
+ * @param arr JSON array object
+ * @param val JSON value to add to the object
+ * @return 1 on success, 0 otherwise
+ */
+int json_add_arr_value(json_array_t* arr, json_value_t* val) {
+    json_value_t** tmp = realloc(arr->values, sizeof(json_value_t *) * (arr->values_count + 1));
+
+    if (!tmp) {
+        // error: something went wrong trying to reallocate
+        return 0;
+    }
+
+    arr->values_count += 1;
+    arr->values = tmp;
+
+    arr->values[arr->values_count - 1] = val;
+
+    return 1;
+}
+
+/**
  * Adds the provided setting to the provided object
  * @param obj JSON object to add setting to
  * @param setting JSON setting to add to the object
@@ -492,7 +514,6 @@ json_obj_t* json_parse_object(json_token_t* first) {
         first = TAILQ_FIRST(&json_head);
 
         if (first->type == JSON_TOKEN_SYNTAX && strncmp(first->string->value, "}", 1) == 0) {
-            json_lexer_remove_first();
             return obj;
         } else if (first->type != JSON_TOKEN_SYNTAX || strncmp(first->string->value, ",", 1) != 0) {
             // error: expected a comma after a setting
@@ -508,16 +529,47 @@ json_obj_t* json_parse_object(json_token_t* first) {
     return NULL;
 }
 
-json_array_t* json_parse_array(json_token_t* elem) {
+json_array_t* json_parse_array(json_token_t* first) {
     json_array_t* arr = json_init_array();
 
-    if (elem->type == JSON_TOKEN_SYNTAX) {
-        if (strncmp(elem->string->value, "]", 1) == 0) {
+    if (first->type == JSON_TOKEN_SYNTAX) {
+        if (strncmp(first->string->value, "]", 1) == 0) {
             return arr;
         }
     }
 
-    return arr;
+    for (; first != NULL; first = TAILQ_FIRST(&json_head)) {
+        json_value_t* value = json_parse_value(first);
+
+        if (value == NULL) {
+            // error: expected a valid value (got an unexpected token)
+            json_free_array(arr);
+            return NULL;
+        }
+
+        if (!json_add_arr_value(arr, value)) {
+            // error: something went wrong trying to add setting to the object
+            json_free_array(arr);
+            return NULL;
+        }
+
+        json_lexer_remove_first();
+        first = TAILQ_FIRST(&json_head);
+
+        if (first->type == JSON_TOKEN_SYNTAX && strncmp(first->string->value, "]", 1) == 0) {
+            return arr;
+        } else if (first->type != JSON_TOKEN_SYNTAX || strncmp(first->string->value, ",", 1) != 0) {
+            // error: expected a comma after a setting
+            json_free_array(arr);
+            return NULL;
+        }
+
+        json_lexer_remove_first();
+    }
+
+    // error: expected end of array bracket
+    json_free_array(arr);
+    return NULL;
 }
 
 json_container_t* json_parse_container(json_token_t* elem) {
@@ -593,11 +645,14 @@ void json_dump_setting(json_setting_t* set, int format, int fd) {
  * @param fd File descriptor to dump in
  */
 void json_dump_object(json_obj_t* obj, int format, int fd) {
-    dprintf(fd, "%s", format ? "{\n" : "{");
+    dprintf(fd, "%s", format && obj->settings_count ? "{\n" : "{");
     for (size_t i = 0; i < obj->settings_count; i++) {
         json_dump_setting(obj->settings[i], format, fd);
         if (i < obj->settings_count - 1) {
-            dprintf(fd, "%s", format ? ",\n" : ",");
+            dprintf(fd, ",");
+        }
+        if (format) {
+            dprintf(fd, "\n");
         }
     }
     dprintf(fd, "}");
@@ -610,11 +665,14 @@ void json_dump_object(json_obj_t* obj, int format, int fd) {
  * @param fd File descriptor to dump in
  */
 void json_dump_array(json_array_t* arr, int format, int fd) {
-    dprintf(fd, "%s", format ? "[\n" : "[");
+    dprintf(fd, "%s", format && arr->values_count ? "[\n" : "[");
     for (size_t i = 0; i < arr->values_count; i++) {
         json_dump_value(arr->values[i], format, fd);
         if (i < arr->values_count - 1) {
-            dprintf(fd, "%s", format ? ",\n" : ",");
+            dprintf(fd, ",");
+        }
+        if (format) {
+            dprintf(fd, "\n");
         }
     }
     dprintf(fd, "]");
