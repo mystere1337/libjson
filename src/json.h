@@ -11,6 +11,7 @@ enum json_value_type_e {
     JSON_VALUE_STR,
     JSON_VALUE_OBJ,
     JSON_VALUE_ARR,
+    JSON_VALUE_NULL,
 };
 
 enum json_token_type_e {
@@ -104,10 +105,14 @@ struct json_setting_s {
     json_value_t* value;
 };
 
+json_array_t* json_parse_array(json_token_t* first);
+json_obj_t* json_parse_object(json_token_t* first);
+
 void json_free_array(json_array_t* array);
 void json_free_value(json_value_t* value);
 void json_free_setting(json_setting_t* setting);
 void json_free_object(json_obj_t* obj);
+void json_free_container(json_container_t* con);
 
 json_container_t* json_from_file(const char *path);
 json_container_t* json_from_string(const char* str);
@@ -125,11 +130,13 @@ int json_set_floating(json_obj_t* obj, const char* key, char separator, long dou
 int json_set_object(json_obj_t* obj, const char* key, char separator, json_obj_t* value);
 
 int json_remove_setting(json_obj_t* obj, const char* key, char separator);
+int json_save(json_container_t* obj, const char* path);
 
-void json_free(json_obj_t* obj);
-int json_save(json_obj_t* obj, const char* path);
-
-char* json_dump(json_obj_t* obj, int format);
-void json_print(json_obj_t* obj, int format);
+void json_dump_string(json_string_t* str, int fd);
+void json_dump_value(json_value_t* val, int format, int fd);
+void json_dump_setting(json_setting_t* set, int format, int fd);
+void json_dump_object(json_obj_t* obj, int format, int fd);
+void json_dump_array(json_array_t* arr, int format, int fd);
+void json_dump_container(json_container_t* con, int format, int fd);
 
 #endif //LIBJSON_JSON_H

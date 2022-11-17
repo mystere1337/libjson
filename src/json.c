@@ -12,6 +12,30 @@
 TAILQ_HEAD(json_tailhead_s, json_token_s) json_head;
 
 /**
+ * Initializes an object to be populated
+ * @return Empty object
+ */
+json_obj_t* json_init_obj() {
+    json_obj_t* obj = malloc(sizeof(json_obj_t));
+
+    obj->settings = malloc(0);
+    obj->settings_count = 0;
+    return obj;
+}
+
+/**
+ * Initializes an array to be populated
+ * @return Empty array
+ */
+json_array_t* json_init_array() {
+    json_array_t* arr = malloc(sizeof(json_array_t));
+
+    arr->values = malloc(0);
+    arr->values_count = 0;
+    return arr;
+}
+
+/**
  * Creates a json string, check length to avoid unexpected behavior
  * @param src Source to copy string from
  * @param len Length of the string to copy
@@ -22,7 +46,14 @@ json_string_t* json_create_string(const char* src, size_t len) {
 
     str->len = len;
     str->value = malloc(len);
+
+    if (str->value == NULL) {
+        return NULL;
+    }
+
     strncpy(str->value, src, len);
+
+    return str;
 }
 
 /**
@@ -209,30 +240,6 @@ json_token_t* json_lex_null(const char* str) {
 }
 
 /**
- * Initializes an object to be populated
- * @return Empty object
- */
-json_obj_t* json_init_obj() {
-    json_obj_t* obj = malloc(sizeof(json_obj_t));
-
-    obj->settings = malloc(0);
-    obj->settings_count = 0;
-    return obj;
-}
-
-/**
- * Initializes an array to be populated
- * @return Empty array
- */
-json_array_t* json_init_array() {
-    json_array_t* arr = malloc(sizeof(json_array_t));
-
-    arr->values = malloc(0);
-    arr->values_count = 0;
-    return arr;
-}
-
-/**
  * Frees a JSON string type
  * @param string The string to be freed
  */
@@ -258,6 +265,9 @@ void json_free_array(json_array_t* array) {
     for (size_t i = 0; i < array->values_count; i++) {
         json_free_value(array->values[i]);
     }
+
+    free(array->values);
+    free(array);
 }
 
 /**
@@ -274,6 +284,8 @@ void json_free_value(json_value_t* value) {
     if (value->type == JSON_VALUE_ARR) {
         json_free_array(value->array_type);
     }
+
+    free(value);
 }
 
 /**
@@ -281,8 +293,9 @@ void json_free_value(json_value_t* value) {
  * @param setting JSON setting
  */
 void json_free_setting(json_setting_t* setting) {
-    free(setting->name);
+    json_free_string(setting->name);
     json_free_value(setting->value);
+    free(setting);
 }
 
 /**
@@ -295,6 +308,20 @@ void json_free_object(json_obj_t* obj) {
     }
 
     free(obj->settings);
+    free(obj);
+}
+
+/**
+ * Frees a JSON container.
+ * @param obj object to free
+ */
+void json_free_container(json_container_t* con) {
+    if (con->type == JSON_CONTAINER_ARRAY) {
+        json_free_array(con->array);
+    } else {
+        json_free_object(con->obj);
+    }
+    free(con);
 }
 
 /**
@@ -343,6 +370,62 @@ void json_lexer_remove_first() {
 
 json_value_t* json_parse_value(json_token_t* token) {
     json_value_t* value = malloc(sizeof(json_value_t));
+
+    if (token->type == JSON_TOKEN_STRING) {
+        value->type = JSON_VALUE_STR;
+        value->string_type = json_create_string(token->string->value, token->string->len);
+    } else if (token->type == JSON_TOKEN_BOOL) {
+        value->type = JSON_VALUE_BOOL;
+        value->bool_type = token->string->len == 4 ? 1 : 0;
+    } else if (token->type == JSON_TOKEN_NULL) {
+        value->type = JSON_VALUE_NULL;
+    } else if (token->type == JSON_TOKEN_NUMBER) {
+        char* null_terminated = malloc(token->string->len + 1);
+
+        null_terminated[token->string->len] = '\0';
+        strncpy(null_terminated, token->string->value, token->string->len);
+        if (memchr(token->string->value, '.', token->string->len) != 0) {
+            value->type = JSON_VALUE_FLOAT;
+            value->double_type = strtod(null_terminated, NULL);
+        } else {
+            value->type = JSON_VALUE_INT;
+            value->long_type = strtoll(null_terminated, NULL, 10);
+        }
+
+        free(null_terminated);
+    } else if (token->type == JSON_TOKEN_SYNTAX) {
+        if (strncmp(token->string->value, "[", 1) == 0) {
+            value->type = JSON_VALUE_ARR;
+            json_lexer_remove_first();
+            json_array_t* arr = json_parse_array(TAILQ_FIRST(&json_head));
+
+            if (arr == NULL) {
+                // error: unexpected token
+                json_free_value(value);
+                return NULL;
+            }
+
+            value->array_type = arr;
+        } else if (strncmp(token->string->value, "{", 1) == 0) {
+            value->type = JSON_VALUE_OBJ;
+            json_lexer_remove_first();
+            json_obj_t * obj = json_parse_object(TAILQ_FIRST(&json_head));
+
+            if (obj == NULL) {
+                // error: unexpected token
+                json_free_value(value);
+                return NULL;
+            }
+
+            value->obj_type = obj;
+        } else {
+            // error: unexpected token
+            json_free_value(value);
+            return NULL;
+        }
+    }
+
+    return value;
 }
 
 json_setting_t* json_parse_setting(json_token_t* first) {
@@ -354,9 +437,7 @@ json_setting_t* json_parse_setting(json_token_t* first) {
         return NULL;
     }
 
-    setting->name = malloc(sizeof(json_string_t));
-    setting->name->len = first->string->len;
-    strncpy(setting->name->value, first->string->value, first->string->len);
+    setting->name = json_create_string(first->string->value, first->string->len);
 
     json_lexer_remove_first();
     first = TAILQ_FIRST(&json_head);
@@ -391,7 +472,6 @@ json_obj_t* json_parse_object(json_token_t* first) {
 
     if (first->type == JSON_TOKEN_SYNTAX) {
         if (strncmp(first->string->value, "}", 1) == 0) {
-            json_lexer_remove_first();
             return obj; // valid but empty
         }
     }
@@ -443,7 +523,7 @@ json_array_t* json_parse_array(json_token_t* elem) {
 }
 
 json_container_t* json_parse_container(json_token_t* elem) {
-    json_container_t* container;
+    json_container_t* container = malloc(sizeof(json_container_t));
 
     if (elem->type == JSON_TOKEN_SYNTAX) {
         if (strncmp(elem->string->value, "{", 1) == 0) {
@@ -460,7 +540,100 @@ json_container_t* json_parse_container(json_token_t* elem) {
     }
 
     // error: invalid container (container must be either an object or an array)
+    json_free_container(container);
     return NULL;
+}
+
+/**
+ * Dumps a JSON string
+ * @param str String to dump
+ * @param fd File descriptor to dump in
+ */
+void json_dump_string(json_string_t* str, int fd) {
+    dprintf(fd, "\"%.*s\"", (int)str->len, str->value);
+}
+
+/**
+ * Dumps a JSON value
+ * @param val Value to dump
+ * @param fd File descriptor to dump in
+ */
+void json_dump_value(json_value_t* val, int format, int fd) {
+    if (val->type == JSON_VALUE_STR) {
+        json_dump_string(val->string_type, fd);
+    } else if (val->type == JSON_VALUE_BOOL) {
+        dprintf(fd, "%s", val->bool_type ? "true" : "false");
+    } else if (val->type == JSON_VALUE_NULL) {
+        dprintf(fd, "null");
+    } else if (val->type == JSON_VALUE_FLOAT) {
+        dprintf(fd, "%Lf", val->double_type);
+    } else if (val->type == JSON_VALUE_INT) {
+        dprintf(fd, "%lld", val->long_type);
+    } else if (val->type == JSON_VALUE_OBJ) {
+        json_dump_object(val->obj_type, format, fd);
+    } else if (val->type == JSON_VALUE_ARR) {
+        json_dump_array(val->array_type, format, fd);
+    }
+}
+
+/**
+ * Dumps a JSON setting
+ * @param set Setting to dump
+ * @param format 1 add formatting, 0 otherwise
+ * @param fd File descriptor to dump in
+ */
+void json_dump_setting(json_setting_t* set, int format, int fd) {
+    json_dump_string(set->name, fd);
+    dprintf(fd, "%s", format ? ": " : ":");
+    json_dump_value(set->value, format, fd);
+}
+
+/**
+ * Dumps a JSON object
+ * @param obj Object to dump
+ * @param format 1 add formatting, 0 otherwise
+ * @param fd File descriptor to dump in
+ */
+void json_dump_object(json_obj_t* obj, int format, int fd) {
+    dprintf(fd, "%s", format ? "{\n" : "{");
+    for (size_t i = 0; i < obj->settings_count; i++) {
+        json_dump_setting(obj->settings[i], format, fd);
+        if (i < obj->settings_count - 1) {
+            dprintf(fd, "%s", format ? ",\n" : ",");
+        }
+    }
+    dprintf(fd, "}");
+}
+
+/**
+ * Dumps a JSON array
+ * @param arr Array to dump
+ * @param format 1 add formatting, 0 otherwise
+ * @param fd File descriptor to dump in
+ */
+void json_dump_array(json_array_t* arr, int format, int fd) {
+    dprintf(fd, "%s", format ? "[\n" : "[");
+    for (size_t i = 0; i < arr->values_count; i++) {
+        json_dump_value(arr->values[i], format, fd);
+        if (i < arr->values_count - 1) {
+            dprintf(fd, "%s", format ? ",\n" : ",");
+        }
+    }
+    dprintf(fd, "]");
+}
+
+/**
+ * Dumps a JSON container
+ * @param container Container to be dumped
+ * @param format Boolean value, 1 prints formatted, 0 otherwise
+ * @param fd File descriptor to dump in
+ */
+void json_dump_container(json_container_t* container, int format, int fd) {
+    if (container->type == JSON_CONTAINER_ARRAY) {
+        json_dump_array(container->array, format, fd);
+    } else {
+        json_dump_object(container->obj, format, fd);
+    }
 }
 
 /**
@@ -519,37 +692,14 @@ json_container_t* json_from_string(const char* str) {
         return NULL;
     }
 
+    TAILQ_FOREACH(tok, &json_head, next) {
+        printf("%.*s\n", tok->string->len, tok->string->value);
+    }
+
     json_container_t* root = json_parse_container(TAILQ_FIRST(&json_head));
 
     json_lexer_clear_list();
     return root;
-}
-
-/**
- * Get key count in key_array
- * @param key_array
- * @return number of elements in the array
- */
-size_t json_key_count(char** key_array) {
-    size_t key_count = 0;
-
-    for (size_t i = 0; key_array[i] != NULL; i++) {
-        key_count++;
-    }
-
-    return key_count;
-}
-
-/**
- * Frees a char** array
- * @param array Array to free from memory
- */
-void json_free_double_char_array(char** array) {
-    for (int i = 0; array[i] != NULL; i++) {
-        free(array[i]);
-    }
-
-    free(array);
 }
 
 /**
@@ -562,26 +712,6 @@ size_t json_get_file_size(int fd) {
 
     fstat(fd, &s);
     return s.st_size;
-}
-
-/**
- * Counts number of invisible characters in string
- * @param str JSON_VALUE_STR pointer
- * @return Number of invisible characters in string
- */
-size_t json_count_invisible_characters(const char* str) {
-    int spaces = 0;
-    int quotes = 0;
-    for (int i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '\"' && (i == 0 ? 1 : str[i - 1] != '\\')) {
-            quotes++;
-        }
-        if (json_symbol_is_whitespace(str[i]) && !(quotes % 2)) {
-            spaces++;
-        }
-    }
-
-    return spaces;
 }
 
 /**
@@ -598,19 +728,6 @@ char* json_get_file_content(int fd) {
     munmap(raw_ptr, raw_len);
 
     return file_content;
-}
-
-/**
- * Frees a JSON object.
- * @param obj object to free
- */
-void json_free(json_obj_t* obj) {
-    for (size_t i = 0; i < obj->settings_count; i++) {
-        json_free_setting(obj->settings[i]);
-    }
-
-    free(obj->settings);
-    free(obj);
 }
 
 /**
@@ -639,228 +756,12 @@ json_container_t* json_from_file(const char *path) {
 }
 
 /**
- * Concatenates two strings together
- * @param dest JSON_VALUE_STR to concat with
- * @param src JSON_VALUE_STR to concat on top of dest
- * @return Concatenated string
- */
-char* json_strcat(char* dest, const char* src) {
-    const size_t a = strlen(dest);
-    const size_t b = strlen(src);
-    const size_t size_ab = a + b + 1;
-
-    dest = realloc(dest, size_ab + 1);
-
-    memcpy(dest + a, src, b + 1);
-
-    return dest;
-}
-
-/**
- * Returns a formatted (Indented... etc.) JSON string from an un-formatted one
- * @param dump Un-formatted JSON string
- * @return Formatted JSON string
- */
-char* json_format(const char* str) {
-    char* ret = NULL;
-
-    int quotes = 0;
-    int braces = 0;
-    int count = 0;
-    for (int i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '\"' && (i == 0 ? 1 : str[i - 1] != '\\')) {
-            if (!(quotes % 2)) {
-                for (int k = 0; k < braces; k++) {
-                    count++;
-                }
-            }
-            count++;
-            quotes++;
-            continue;
-        }
-        if (str[i] == '{' && !(quotes % 2)) {
-            braces++;
-            count += 2;
-            continue;
-        }
-        if (str[i] == '}' && !(quotes % 2)) {
-            braces--;
-            count += 2;
-            for (int k = 0; k < braces; k++) {
-                count++;
-            }
-        }
-        if (str[i] == ':' && !(quotes % 2)) {
-            count += 2;
-            continue;
-        }
-        if (str[i] == ',' && !(quotes % 2)) {
-            count += 2;
-            continue;
-        }
-        if (json_symbol_is_whitespace(str[i]) && !(quotes % 2)) {
-            continue;
-        }
-        count++;
-    }
-
-    ret = malloc(strlen(str) + count + 1);
-
-    int j = 0;
-    quotes = 0;
-    braces = 0;
-    for (int i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '\"' && (i == 0 ? 1 : str[i - 1] != '\\')) {
-            if (!(quotes % 2) && str[i - 1] != ':') {
-                for (int k = 0; k < braces; k++) {
-                    ret[j] = '\t'; j++;
-                }
-            }
-            ret[j] = '\"'; j++;
-            quotes++;
-            continue;
-        }
-        if (str[i] == '{' && !(quotes % 2)) {
-            braces++;
-            ret[j] = '{'; j++;
-            if (str[i+1] != '}') {
-                ret[j] = '\n'; j++;
-            }
-            continue;
-        }
-        if (str[i] == '}' && !(quotes % 2)) {
-            braces--;
-            if (str[i-1] != '{') {
-                ret[j] = '\n'; j++;
-                for (int k = 0; k < braces; k++) {
-                    ret[j] = '\t'; j++;
-                }
-            }
-            ret[j] = '}'; j++;
-            continue;
-        }
-        if (str[i] == ':' && !(quotes % 2)) {
-            ret[j] = ':'; j++;
-            ret[j] = ' '; j++;
-            continue;
-        }
-        if (str[i] == ',' && !(quotes % 2)) {
-            ret[j] = ','; j++;
-            ret[j] = '\n'; j++;
-            continue;
-        }
-        if (json_symbol_is_whitespace(str[i]) && !(quotes % 2)) {
-            continue;
-        }
-        ret[j] = str[i]; j++;
-    }
-    ret[j] = '\0';
-
-    return ret;
-}
-
-/**
- * Creates a human readable string containing the given JSON object
- * @param obj JSON object to dump
- * @return JSON string
- */
-char* json_dump(json_obj_t* obj, int format) {
-    char* tmp;
-    char* str = malloc(2);
-    strncpy(str, "{", 2);
-
-    for (size_t i = 0; i < obj->settings_count; i++) {
-        size_t needed = snprintf(NULL, 0, "\"%s\":", obj->settings[i]->name) + 1;
-        tmp = malloc(needed);
-        sprintf(tmp, "\"%s\":", obj->settings[i]->name);
-        str = json_strcat(str, tmp);
-        free(tmp);
-
-        switch (obj->settings[i]->type) {
-            case JSON_VALUE_BOOL: {
-                needed = snprintf(NULL, 0, "%s%s", obj->settings[i]->bool_type ? "true" : "false", i == obj->settings_count - 1 ? "" : ",") + 1;
-                tmp = malloc(needed);
-                sprintf(tmp, "%s%s", obj->settings[i]->bool_type ? "true" : "false", i == obj->settings_count - 1 ? "" : ",");
-                str = json_strcat(str, tmp);
-                free(tmp);
-                break;
-            }
-            case JSON_VALUE_INT: {
-                needed = snprintf(NULL, 0, "%lld%s", obj->settings[i]->long_type, i == obj->settings_count - 1 ? "" : ",") + 1;
-                tmp = malloc(needed);
-                sprintf(tmp, "%lld%s", obj->settings[i]->long_type, i == obj->settings_count - 1 ? "" : ",");
-                str = json_strcat(str, tmp);
-                free(tmp);
-                break;
-            }
-            case JSON_VALUE_FLOAT: {
-                needed = snprintf(NULL, 0, "%Lf%s", obj->settings[i]->double_type, i == obj->settings_count - 1 ? "" : ",") + 1;
-                tmp = malloc(needed);
-                sprintf(tmp, "%Lf%s", obj->settings[i]->double_type, i == obj->settings_count - 1 ? "" : ",");
-                str = json_strcat(str, tmp);
-                free(tmp);
-                break;
-            }
-            case JSON_VALUE_STR: {
-                needed = snprintf(NULL, 0, "\"%s\"%s", obj->settings[i]->string_type, i == obj->settings_count - 1 ? "" : ",") + 1;
-                tmp = malloc(needed);
-                sprintf(tmp, "\"%s\"%s", obj->settings[i]->string_type, i == obj->settings_count - 1 ? "" : ",");
-                str = json_strcat(str, tmp);
-                free(tmp);
-                break;
-            }
-            case JSON_VALUE_OBJ: {
-                if (obj->settings[i]->obj_type == NULL) {
-                    needed = snprintf(NULL, 0, "null%s", i == obj->settings_count - 1 ? "" : ",") + 1;
-                    tmp = malloc(needed);
-                    sprintf(tmp, "null%s", i == obj->settings_count - 1 ? "" : ",");
-                    str = json_strcat(str, tmp);
-                    free(tmp);
-                    break;
-                }
-
-                char* dump = json_dump(obj->settings[i]->obj_type, 0);
-                needed = snprintf(NULL, 0, "%s%s", dump, i == obj->settings_count - 1 ? "" : ",") + 1;
-                tmp = malloc(needed);
-                sprintf(tmp, "%s%s", dump, i == obj->settings_count - 1 ? "" : ",");
-                str = json_strcat(str, tmp);
-                free(tmp);
-                free(dump);
-                break;
-            }
-        }
-    }
-
-    str = json_strcat(str, "}");
-
-    if (format) {
-        char* formatted = json_format(str);
-        free(str);
-        return formatted;
-    } else {
-        return str;
-    }
-}
-
-/**
- * Prints a JSON object on the standard output. Memory handled
- * @param obj JSON_VALUE_OBJ to print
- * @param format JSON_VALUE_BOOL; Format the output (1) or no (0)?
- */
-void json_print(json_obj_t* obj, int format) {
-    char* dump = json_dump(obj, format);
-
-    printf("%s\n", dump);
-    free(dump);
-}
-
-/**
  * Writes a JSON object to disk
  * @param json JSON_VALUE_OBJ to save
  * @param path Path to file that will contain the object
  * @return 0 on error, 1 on success.
  */
-int json_save(json_obj_t* json, const char* path) {
+int json_save(json_container_t* json, const char* path) {
     if (access(path, F_OK) == 0) {
         if (unlink(path) == -1) {
             return 0;
@@ -873,457 +774,6 @@ int json_save(json_obj_t* json, const char* path) {
         return 0;
     }
 
-    char* str = json_dump(json, 0);
-    write(fd, str, strlen(str));
-
-    free(str);
+    json_dump_container(json, 1, fd);
     return 1;
-}
-
-/**
- * Gets length of key array from string
- * @param str Key array (ex: "object1.object2.setting")
- * @return The number of keys in the string (ex: 3)
- */
-size_t json_get_key_array_len(const char* str) {
-    size_t count = 0;
-
-    for (int i = 0; str[i] != '\0'; i++) {
-        if (str[i] == '.') { count++; }
-    }
-    return count + 1;
-}
-
-/**
- * Splits a string representing array of strings like
- * @param str Key array (ex: "object1.object2.setting")
- * @param separator Separator to split keys in the string
- * @return A NULL-terminated array of key strings
- */
-char** json_get_key_array(const char* str, const char separator) {
-    size_t len = strlen(str);
-    char* double_sep = malloc(3);
-    double_sep[0] = separator;
-    double_sep[1] = separator;
-    double_sep[2] = '\0';
-
-    if (strstr(str, double_sep) != NULL || str[0] == separator || str[len - 1] == separator) {
-        free(double_sep);
-        return NULL;
-    }
-
-    free(double_sep);
-
-    size_t arr_len = json_get_key_array_len(str);
-    char** str_array = malloc(sizeof(char*) * (arr_len + 1));
-    str_array[arr_len] = NULL;
-
-    for (size_t i = 0, j = 0, k = 0; str[i] != '\0'; i++) {
-        if (str[i] == separator || i == len - 1) {
-            int offset = (i == len - 1) ? 2 : 1;
-
-            str_array[j] = malloc(i - k + offset);
-            str_array[j][i - k + offset - 1] = '\0';
-            strncpy(str_array[j], &str[k], i - k + offset - 1);
-            k = i + 1;
-            j++;
-            continue;
-        }
-    }
-
-    return str_array;
-}
-
-/**
- * Get first corresponding string setting
- * @param obj JSON_VALUE_OBJ to search
- * @param key_array Key array
- * @return Corresponding setting or NULL if not found
- */
-json_setting_t* json_get_setting(json_obj_t* obj, char** key_array, int remove) {
-    if (obj == NULL) {
-        return NULL;
-    }
-
-    size_t key_count = json_key_count(key_array);
-
-    for (size_t i = 0; i < obj->settings_count; i++) {
-        if (strcmp(obj->settings[i]->name, key_array[0]) == 0) {
-            if (obj->settings[i]->type == JSON_VALUE_OBJ && key_count - 1 != 0) {
-                return json_get_setting(obj->settings[i]->obj_type, &key_array[1], remove);
-            } else {
-                json_setting_t* ret = obj->settings[i];
-
-                if (remove) {
-                    if (i != obj->settings_count - 1) {
-                        for (size_t j = 0; j < obj->settings_count - i - 1; j++) {
-                            obj->settings[i + j] = obj->settings[i + j + 1];
-                        }
-                    }
-
-                    json_setting_t** tmp = realloc(obj->settings, (obj->settings_count - 1) * sizeof(json_setting_t*));
-
-                    if (tmp == NULL && obj->settings_count > 1) {
-                        exit(1);
-                    }
-
-                    obj->settings_count -= 1;
-                    obj->settings = tmp;
-                }
-
-                return ret;
-            }
-        }
-    }
-
-    return NULL;
-}
-
-/**
- * Get corresponding string setting
- * @param obj JSON_VALUE_OBJ to search
- * @param str Key array like (ex: "object.setting")
- * @param separator Char separator separating the keys in the string
- * @return Corresponding setting or NULL if error happens
- */
-char* json_get_string(json_obj_t* obj, const char* str, char separator) {
-    char** key_array = json_get_key_array(str, separator);
-    json_setting_t* setting = json_get_setting(obj, key_array, 0);
-
-    json_free_double_char_array(key_array);
-
-    if (setting == NULL || setting->type != JSON_VALUE_STR) {
-        printf("error: can't find %s, or it isn't a string\n", str);
-        return NULL;
-    }
-
-    return setting->string_type;
-}
-
-/**
- * Get corresponding boolean setting
- * @param obj JSON_VALUE_OBJ to search
- * @param str Key array like (ex: "object.setting")
- * @param separator Char separator separating the keys in the string (ex: '.')
- * @return Correct boolean values or 0 if nothing is found
- */
-int json_get_bool(json_obj_t* obj, const char* str, char separator) {
-    char** key_array = json_get_key_array(str, separator);
-    json_setting_t* setting = json_get_setting(obj, key_array, 0);
-
-    json_free_double_char_array(key_array);
-
-    if (setting == NULL || setting->type != JSON_VALUE_BOOL) {
-        printf("error: can't find %s, or it isn't a bool\n", str);
-        return 0;
-    }
-
-    return setting->bool_type;
-}
-
-/**
- * Get corresponding integer setting
- * @param obj JSON_VALUE_OBJ to search
- * @param str Key array like (ex: "object.setting")
- * @param separator Char separator separating the keys in the string (ex: '.')
- * @return Corresponding setting or 0 if error happens
- */
-long long json_get_integer(json_obj_t* obj, const char* str, char separator) {
-    char** key_array = json_get_key_array(str, separator);
-    json_setting_t* setting = json_get_setting(obj, key_array, 0);
-
-    json_free_double_char_array(key_array);
-
-    if (setting == NULL || setting->type != JSON_VALUE_INT) {
-        printf("error: can't find %s, or it isn't an integer\n", str);
-        return 0;
-    }
-
-    return setting->long_type;
-}
-
-/**
- * Get corresponding object setting
- * @param obj JSON_VALUE_OBJ to search
- * @param str Key array like (ex: "object.setting")
- * @param separator Char separator separating the keys in the string (ex: '.')
- * @return Corresponding setting or NULL if error happens
- */
-json_obj_t* json_get_object(json_obj_t* obj, const char* str, char separator) {
-    char** key_array = json_get_key_array(str, separator);
-    json_setting_t* setting = json_get_setting(obj, key_array, 0);
-
-    json_free_double_char_array(key_array);
-
-    if (setting == NULL || setting->type != JSON_VALUE_OBJ) {
-        printf("error: can't find %s, or it isn't an object\n", str);
-        return NULL;
-    }
-
-    return setting->obj_type;
-}
-
-/**
- * Get corresponding floating point number setting
- * @param obj JSON_VALUE_OBJ to search
- * @param str Key array like (ex: "object.setting")
- * @param separator Char separator separating the keys in the string (ex: '.')
- * @return Corresponding values or 0 if error happens
- */
-long double json_get_floating(json_obj_t* obj, const char* str, char separator) {
-    char** key_array = json_get_key_array(str, separator);
-    json_setting_t* setting = json_get_setting(obj, key_array, 0);
-
-    json_free_double_char_array(key_array);
-
-    if (setting == NULL || setting->type != JSON_VALUE_FLOAT) {
-        printf("error: can't find %s, or it isn't a floating point number\n", str);
-        return 0;
-    }
-
-    return setting->double_type;
-}
-
-/**
- * Removes a setting from an object at specified key
- * @param obj JSON_VALUE_OBJ to search in
- * @param key Key to setting
- * @param separator Separator
- * @return 0 if obj is NULL, if setting doesn't exist, 1 on success
- */
-int json_remove_setting(json_obj_t* obj, const char* key, char separator) {
-    if (obj == NULL) {
-        return 0;
-    }
-
-    char** key_array = json_get_key_array(key, separator);
-    json_setting_t* setting = json_get_setting(obj, key_array, 1);
-
-    json_free_double_char_array(key_array);
-    json_free_setting(setting);
-
-    return 1;
-}
-
-/**
- * Creates a string setting and returns a pointer to it
- * @param name Name of the setting
- * @param value Value of the setting
- * @return The created setting
- */
-json_setting_t* json_create_string_setting(const char* name, const char* value) {
-    json_setting_t* setting = malloc(sizeof(json_setting_t));
-
-    setting->type = JSON_VALUE_STR;
-    setting->name = malloc(strlen(name) + 1);
-    strcpy(setting->name, name);
-    setting->string_type = malloc(strlen(value) + 1);
-    strcpy(setting->string_type, value);
-
-    return setting;
-}
-
-/**
- * Creates a boolean setting and returns a pointer to it
- * @param name Name of the setting
- * @param value Value of the setting
- * @return The created setting
- */
-json_setting_t* json_create_bool_setting(const char* name, int value) {
-    json_setting_t* setting = malloc(sizeof(json_setting_t));
-
-    setting->type = JSON_VALUE_BOOL;
-    setting->name = malloc(strlen(name) + 1);
-    strcpy(setting->name, name);
-    setting->bool_type = value;
-
-    return setting;
-}
-
-/**
- * Creates a integer setting and returns a pointer to it
- * @param name Name of the setting
- * @param value Value of the setting
- * @return The created setting
- */
-json_setting_t* json_create_integer_setting(const char* name, long long value) {
-    json_setting_t* setting = malloc(sizeof(json_setting_t));
-
-    setting->type = JSON_VALUE_INT;
-    setting->name = malloc(strlen(name) + 1);
-    strcpy(setting->name, name);
-    setting->long_type = value;
-
-    return setting;
-}
-
-/**
- * Creates a floating point setting and returns a pointer to it
- * @param name Name of the setting
- * @param value Value of the setting
- * @return The created setting
- */
-json_setting_t* json_create_floating_setting(const char* name, long double value) {
-    json_setting_t* setting = malloc(sizeof(json_setting_t));
-
-    setting->type = JSON_VALUE_FLOAT;
-    setting->name = malloc(strlen(name) + 1);
-    strcpy(setting->name, name);
-    setting->double_type = value;
-
-    return setting;
-}
-
-/**
- * Creates a integer setting and returns a pointer to it
- * @param name Name of the setting
- * @param value Value of the setting
- * @return The created setting
- */
-json_setting_t* json_create_object_setting(const char* name, json_obj_t* value) {
-    json_setting_t* setting = malloc(sizeof(json_setting_t));
-
-    setting->type = JSON_VALUE_OBJ;
-    setting->name = malloc(strlen(name) + 1);
-    strcpy(setting->name, name);
-    setting->obj_type = value;
-
-    return setting;
-}
-
-/**
- * Adds a setting to an object. If the object is already containing a setting with this string, it will
- * automatically be overwritten by the new one.
- * @param obj JSON_VALUE_OBJ to which add the setting
- * @param setting Setting to add to the object
- * @param key_array Array of keys containing the path
- * @return 0 on failure, 1 on success
- */
-int json_add_setting(json_obj_t* obj, json_setting_t* setting, char** key_array, size_t key_count) {
-    if (obj == NULL) {
-        return 0;
-    }
-
-    json_setting_t* old_setting = json_get_setting(obj, key_array, 1);
-    json_free_setting(old_setting);
-
-    for (size_t i = 0; i < obj->settings_count; i++) {
-        if (strcmp(obj->settings[i]->name, key_array[0]) == 0 && key_count > 1) {
-            if (obj->settings[i]->type == JSON_VALUE_OBJ && key_count - 1 != 0) {
-                return json_add_setting(obj->settings[i]->obj_type, setting, &key_array[1], key_count - 1);
-            }
-        } else {
-            json_obj_t* obj_new = malloc(sizeof(json_obj_t));
-
-            obj_new->settings_count = obj->settings_count + 1;
-            obj_new->settings = malloc(sizeof(json_setting_t*) * (obj->settings_count + 1));
-            for(size_t j = 0; j < obj->settings_count; j++) {
-                obj_new->settings[j] = malloc(sizeof(json_setting_t));
-                *(obj_new->settings[j]) = *(obj->settings[j]);
-            }
-            obj_new->settings[obj->settings_count] = setting;
-
-            for(size_t j = 0; j < obj->settings_count; j++) {
-                free(obj->settings[j]);
-            }
-            free(obj->settings);
-
-            *obj = *obj_new;
-            free(obj_new);
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-/**
- * Sets a string setting at the desired key
- * @param obj JSON_VALUE_OBJ in which set the setting
- * @param key Key path at which set the setting (ex: object.object.setting)
- * @param separator Separator of keys in key path
- * @param value Value to set in the setting
- * @return 0 on failure, 1 on success. Can be a failure when the object in which to set the setting doesn't exist
- */
-int json_set_string(json_obj_t* obj, const char* key, char separator, const char* value) {
-    char** key_array = json_get_key_array(key, separator);
-    size_t key_count = json_key_count(key_array);
-    json_setting_t* setting = json_create_string_setting(key_array[key_count - 1], value);
-    int ret = json_add_setting(obj, setting, key_array, key_count);
-
-    json_free_double_char_array(key_array);
-
-    return ret;
-}
-
-/**
- * Sets a boolean setting at the desired key
- * @param obj JSON_VALUE_OBJ in which set the setting
- * @param key Key path at which set the setting (ex: object.object.setting)
- * @param separator Separator of keys in key path
- * @param value Value to set in the setting
- * @return 0 on failure, 1 on success. Can be a failure when the object in which to set the setting doesn't exist
- */
-int json_set_bool(json_obj_t* obj, const char* key, char separator, int value) {
-    char** key_array = json_get_key_array(key, separator);
-    size_t key_count = json_key_count(key_array);
-    int ret = json_add_setting(obj, json_create_bool_setting(key_array[key_count - 1], value), key_array, key_count);
-
-    json_free_double_char_array(key_array);
-
-    return ret;
-}
-
-/**
- * Sets a integer setting at the desired key
- * @param obj JSON_VALUE_OBJ in which set the setting
- * @param key Key path at which set the setting (ex: object.object.setting)
- * @param separator Separator of keys in key path
- * @param value Value to set in the setting
- * @return 0 on failure, 1 on success. Can be a failure when the object in which to set the setting doesn't exist
- */
-int json_set_integer(json_obj_t* obj, const char* key, char separator, long long value) {
-    char** key_array = json_get_key_array(key, separator);
-    size_t key_count = json_key_count(key_array);
-    int ret = json_add_setting(obj, json_create_integer_setting(key_array[key_count - 1], value), key_array, key_count);
-
-    json_free_double_char_array(key_array);
-
-    return ret;
-}
-
-/**
- * Sets a floating setting at the desired key
- * @param obj JSON_VALUE_OBJ in which set the setting
- * @param key Key path at which set the setting (ex: object.object.setting)
- * @param separator Separator of keys in key path
- * @param value Value to set in the setting
- * @return 0 on failure, 1 on success. Can be a failure when the object in which to set the setting doesn't exist
- */
-int json_set_floating(json_obj_t* obj, const char* key, char separator, long double value) {
-    char** key_array = json_get_key_array(key, separator);
-    size_t key_count = json_key_count(key_array);
-    int ret = json_add_setting(obj, json_create_floating_setting(key_array[key_count - 1], value), key_array, key_count);
-
-    json_free_double_char_array(key_array);
-
-    return ret;
-}
-
-/**
- * Sets an object setting at the desired key
- * @param obj JSON_VALUE_OBJ in which set the setting
- * @param key Key path at which set the setting (ex: object.object.setting)
- * @param separator Separator of keys in key path
- * @param value Value to set in the setting
- * @return 0 on failure, 1 on success. Can be a failure when the object in which to set the setting doesn't exist
- */
-int json_set_object(json_obj_t* obj, const char* key, char separator, json_obj_t* value) {
-    char** key_array = json_get_key_array(key, separator);
-    size_t key_count = json_key_count(key_array);
-    int ret = json_add_setting(obj, json_create_object_setting(key_array[key_count - 1], value), key_array, key_count);
-
-    json_free_double_char_array(key_array);
-
-    return ret;
 }
