@@ -429,14 +429,12 @@ json_value_t* json_parse_value(json_token_t* token) {
 }
 
 json_setting_t* json_parse_setting(json_token_t* first) {
-    json_setting_t* setting = malloc(sizeof(json_setting_t));
-
     if (first->type != JSON_TOKEN_STRING) {
         // error: expected a string (setting key must be a string)
-        json_free_setting(setting);
         return NULL;
     }
 
+    json_setting_t* setting = malloc(sizeof(json_setting_t));
     setting->name = json_create_string(first->string->value, first->string->len);
 
     json_lexer_remove_first();
