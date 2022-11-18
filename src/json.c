@@ -96,12 +96,12 @@ struct json_value_s {
     enum json_value_type_e type;
 
     union {
-        int bool_type;
-        long long long_type;
-        long double double_type;
-        json_string_t* string_type;
-        json_obj_t* obj_type;
-        json_array_t* array_type;
+        int bool_value;
+        long long long_value;
+        long double double_value;
+        json_string_t* string_value;
+        json_obj_t* obj_value;
+        json_array_t* array_value;
     };
 };
 
@@ -403,13 +403,13 @@ void json_free_array(json_array_t* array) {
  */
 void json_free_value(json_value_t* value) {
     if (value->type == JSON_VALUE_STR) {
-        json_free_string(value->string_type);
+        json_free_string(value->string_value);
     }
     if (value->type == JSON_VALUE_OBJ) {
-        json_free_object(value->obj_type);
+        json_free_object(value->obj_value);
     }
     if (value->type == JSON_VALUE_ARR) {
-        json_free_array(value->array_type);
+        json_free_array(value->array_value);
     }
 
     free(value);
@@ -522,10 +522,10 @@ json_value_t* json_parse_value(json_token_t* token) {
 
     if (token->type == JSON_TOKEN_STRING) {
         value->type = JSON_VALUE_STR;
-        value->string_type = json_create_string(token->string->value, token->string->len);
+        value->string_value = json_create_string(token->string->value, token->string->len);
     } else if (token->type == JSON_TOKEN_BOOL) {
         value->type = JSON_VALUE_BOOL;
-        value->bool_type = token->string->len == 4 ? 1 : 0;
+        value->bool_value = token->string->len == 4 ? 1 : 0;
     } else if (token->type == JSON_TOKEN_NULL) {
         value->type = JSON_VALUE_NULL;
     } else if (token->type == JSON_TOKEN_NUMBER) {
@@ -535,10 +535,10 @@ json_value_t* json_parse_value(json_token_t* token) {
         strncpy(null_terminated, token->string->value, token->string->len);
         if (memchr(token->string->value, '.', token->string->len) != 0) {
             value->type = JSON_VALUE_FLOAT;
-            value->double_type = strtod(null_terminated, NULL);
+            value->double_value = strtod(null_terminated, NULL);
         } else {
             value->type = JSON_VALUE_INT;
-            value->long_type = strtoll(null_terminated, NULL, 10);
+            value->long_value = strtoll(null_terminated, NULL, 10);
         }
 
         free(null_terminated);
@@ -554,7 +554,7 @@ json_value_t* json_parse_value(json_token_t* token) {
                 return NULL;
             }
 
-            value->array_type = arr;
+            value->array_value = arr;
         } else if (strncmp(token->string->value, "{", 1) == 0) {
             value->type = JSON_VALUE_OBJ;
             json_lexer_remove_first();
@@ -566,7 +566,7 @@ json_value_t* json_parse_value(json_token_t* token) {
                 return NULL;
             }
 
-            value->obj_type = obj;
+            value->obj_value = obj;
         } else {
             // error: unexpected token
             json_free_value(value);
@@ -737,19 +737,19 @@ void json_dump_string(json_string_t* str, int fd) {
  */
 void json_dump_value(json_value_t* val, int format, int fd) {
     if (val->type == JSON_VALUE_STR) {
-        json_dump_string(val->string_type, fd);
+        json_dump_string(val->string_value, fd);
     } else if (val->type == JSON_VALUE_BOOL) {
-        dprintf(fd, "%s", val->bool_type ? "true" : "false");
+        dprintf(fd, "%s", val->bool_value ? "true" : "false");
     } else if (val->type == JSON_VALUE_NULL) {
         dprintf(fd, "null");
     } else if (val->type == JSON_VALUE_FLOAT) {
-        dprintf(fd, "%Lf", val->double_type);
+        dprintf(fd, "%Lf", val->double_value);
     } else if (val->type == JSON_VALUE_INT) {
-        dprintf(fd, "%lld", val->long_type);
+        dprintf(fd, "%lld", val->long_value);
     } else if (val->type == JSON_VALUE_OBJ) {
-        json_dump_object(val->obj_type, format, fd);
+        json_dump_object(val->obj_value, format, fd);
     } else if (val->type == JSON_VALUE_ARR) {
-        json_dump_array(val->array_type, format, fd);
+        json_dump_array(val->array_value, format, fd);
     }
 }
 
